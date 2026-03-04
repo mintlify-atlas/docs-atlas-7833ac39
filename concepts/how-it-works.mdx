@@ -1,0 +1,193 @@
+---
+title: "How Restack Works"
+description: "Understand the complete 6-step process that Restack uses to rebuild your branch chains"
+---
+
+Restack CLI automates the complex process of rebuilding sequential pull request branches. When you run the `restack` command, it executes a carefully orchestrated 6-step workflow to ensure your branch chain is properly reconstructed.
+
+## The 6-Step Process
+
+<Steps>
+  <Step title="Commit Range Analysis">
+    Restack starts by analyzing the commit range you specified between your start and end commits.
+
+    ```bash
+    # Example command
+    restack 938fa82e f80ce55b origin/feature/anytime
+    ```
+
+    **What happens internally:**
+    - Uses `git rev-list --reverse` to get all commits from start to end (source:53)
+    - Includes the start commit in the range using `${START_COMMIT}^..${END_COMMIT}` (source:53)
+    - Stores all commits in an array for processing (source:120-122)
+    - Validates that the commit range exists and is accessible (source:64-68)
+
+    <Info>
+    The `--reverse` flag ensures commits are processed in chronological order, which is crucial for proper cherry-picking later.
+    </Info>
+  </Step>
+
+  <Step title="PR Range Identification">
+    Restack detects PR boundaries by finding commits that have branch pointers.
+
+    **Detection logic (source:124-133):**
+    ```bash
+    # For each commit, check if a branch points to it
+    for i in "${!ALL_COMMITS[@]}"; do
+      commit="${ALL_COMMITS[$i]}"
+      BRANCH_NAME=$(git branch --list --format='%(refname:short)' --points-at "$commit")
+      
+      if [ -n "$BRANCH_NAME" ]; then
+        # This commit marks the end of a PR range
+        PR_BRANCHES+=("$BRANCH_NAME")
+        PR_END_INDICES+=("$i")
+      fi
+    done
+    ```
+
+    **Output example:**
+    ```
+    📚 Discovered PR Ranges:
+      feature/add-auth ← 938fa82 ~ a1b2c3d (3 commits)
+      feature/user-profile ← e4f5g6h ~ f80ce55 (2 commits)
+    ```
+
+    <Note>
+    If no branches are found, Restack exits with an error asking you to ensure each PR's final commit has a local branch pointer (source:136-140).
+    </Note>
+  </Step>
+
+  <Step title="Restack Plan Display">
+    Before making any changes, Restack shows you the complete rebuilding plan.
+
+    **Visual hierarchy (source:166-178):**
+    ```
+    📚 Re-stack Plan:
+    Base: origin/feature/anytime
+      └─ feature/add-auth
+          └─ feature/user-profile
+              └─ feature/settings
+    ```
+
+    This visualization shows:
+    - The base branch that will be the foundation (source:169)
+    - Each branch in order, showing how they stack on each other (source:171-177)
+    - The sequential dependency chain
+
+    <Warning>
+    You must confirm with 'y' or 'Y' to proceed. Any other input cancels the operation (source:180-185).
+    </Warning>
+  </Step>
+
+  <Step title="Cherry-Pick Execution">
+    Restack creates temporary branches and cherry-picks commits from each PR range.
+
+    **Process for each PR (source:195-301):**
+    
+    1. **Create temporary branch** with `RESTACK-` prefix (source:14, 198)
+       - First PR branches from base: `git checkout -b RESTACK-feature/add-auth origin/feature/anytime`
+       - Subsequent PRs branch from previous: `git checkout -b RESTACK-feature/user-profile RESTACK-feature/add-auth`
+
+    2. **Cherry-pick all commits in range** (source:227-234)
+       ```bash
+       for commit_idx in $(seq $PR_START_INDEX $PR_END_INDEX); do
+         commit="${ALL_COMMITS[$commit_idx]}"
+         git cherry-pick "$commit"
+       done
+       ```
+
+    3. **Handle conflicts interactively** (source:238-299)
+       - Option 1: Resolve conflicts and continue
+       - Option 2: Skip the problematic commit
+       - Option 3: Abort entire operation
+
+    <Accordion title="Why use temporary branches?">
+    Temporary branches ensure that if something goes wrong during the restack process (conflicts, type errors), your original branches remain untouched. Only after successful completion does Restack rename the temporary branches to the final names (source:362-372).
+    </Accordion>
+  </Step>
+
+  <Step title="Type Checking">
+    After cherry-picking all commits for a PR, Restack runs TypeScript type checking.
+
+    **Implementation (source:81-95):**
+    ```bash
+    run_typecheck() {
+      local branch_name="$1"
+      cd "$WEB_DIR"  # Navigate to uglyus-web directory
+      
+      if npx tsc --noEmit 2>&1; then
+        echo "✅ Type check passed"
+        return 0
+      else
+        echo "❌ Type check failed!"
+        return 1
+      fi
+    }
+    ```
+
+    **If type check fails (source:304-360):**
+    - You can fix the errors and optionally amend the last commit (source:318-326)
+    - Or abort the entire operation
+    - Restack loops until type check passes
+
+    <Info>
+    The type check runs in the `uglyus-web` subdirectory, which is expected to exist in your repository (source:33-38).
+    </Info>
+  </Step>
+
+  <Step title="Branch Conversion">
+    Once all checks pass, Restack converts temporary branches to final branches.
+
+    **Conversion process (source:362-376):**
+    ```bash
+    # 1. Detach HEAD if currently on the temp branch
+    if [ "$CURRENT" = "$TEMP_BRANCH_NAME" ]; then
+      git checkout --detach HEAD
+    fi
+
+    # 2. Delete old branch if it exists
+    if git rev-parse --verify "$final_branch" >/dev/null 2>&1; then
+      git branch -D "$final_branch"
+    fi
+
+    # 3. Rename temp to final
+    git branch -m "$temp_branch" "$final_branch"
+
+    # 4. Check out the new branch
+    git checkout "$final_branch"
+    ```
+
+    This ensures:
+    - Clean transition from temporary to final branches
+    - No lingering temporary branches
+    - Ready for push to remote
+  </Step>
+</Steps>
+
+## After Completion
+
+Once all branches are successfully created, Restack:
+
+1. **Displays summary** of all created branches with commit hashes (source:385-391)
+2. **Prompts for push** - Asks if you want to push all branches to remote (source:398-412)
+3. **Uses force-with-lease** - Safely overwrites remote branches while protecting against unintended overwrites (source:405)
+
+<Note>
+If the operation fails at any point, Restack provides a command to resume from where it left off, using the last successfully created branch as the new base (source:290-291).
+</Note>
+
+## Key Design Decisions
+
+<AccordionGroup>
+  <Accordion title="Why cherry-pick instead of merge?">
+    Cherry-picking allows Restack to reconstruct exact commit histories without merge commits. This preserves the clean, linear history that's ideal for code review and maintains the original commit structure.
+  </Accordion>
+
+  <Accordion title="Why require branch pointers on commits?">
+    Branch pointers (found via `git branch --points-at`) are the only reliable way to detect PR boundaries. Without them, Restack cannot determine where one PR ends and another begins (source:74-78, 127).
+  </Accordion>
+
+  <Accordion title="Why run type checks between PRs?">
+    Each PR should be independently valid. Running type checks ensures that each branch in the chain can stand alone and doesn't introduce type errors that would break dependent branches.
+  </Accordion>
+</AccordionGroup>

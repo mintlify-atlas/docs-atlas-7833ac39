@@ -1,80 +1,283 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Get started with Restack CLI by reorganizing your first set of commits
 ---
 
-## Get started in three steps
+This guide walks you through using Restack CLI for the first time. You'll learn how to reorganize commits across multiple PRs into clean, stacked branches.
 
-Get your documentation site running locally and make your first customization.
+## Before you begin
 
-### Step 1: Set up your local environment
+Make sure you have:
+
+- [Installed Restack CLI](/installation) on your system
+- A Git repository with multiple commits you want to reorganize
+- Local branches pointing to the last commit of each PR
+
+<Warning>
+  Restack creates new branches and modifies your Git history. Make sure you have committed or stashed any working changes before proceeding.
+</Warning>
+
+## Understanding the command syntax
+
+The basic Restack command follows this pattern:
+
+```bash
+restack <start-commit> <end-commit> [base-branch]
+```
+
+### Parameters
+
+<ParamField path="start-commit" type="string" required>
+  The commit hash where your reorganization range begins (inclusive)
+</ParamField>
+
+<ParamField path="end-commit" type="string" required>
+  The commit hash where your reorganization range ends (inclusive)
+</ParamField>
+
+<ParamField path="base-branch" type="string" default="origin/feature/anytime">
+  The branch to use as the base for the first PR. Can be a local or remote branch.
+</ParamField>
+
+## Your first restack
+
+Let's walk through a complete example:
+
+<Steps>
+  <Step title="Identify your commit range">
+    First, find the commit hashes for your range. Use `git log` to view your commits:
+    
+    ```bash
+    git log --oneline
+    ```
+    
+    Look for the first and last commits you want to reorganize. For example:
+    - Start commit: `938fa82e`
+    - End commit: `f80ce55b`
+  </Step>
+  
+  <Step title="Ensure branches mark PR boundaries">
+    Restack identifies PR boundaries by finding commits with local branches. Make sure each PR's last commit has a branch pointing to it.
+    
+    Check which commits have branches:
+    ```bash
+    git log --oneline --decorate
+    ```
+    
+    Create branches if needed:
+    ```bash
+    git branch feature/my-pr <commit-hash>
+    ```
+  </Step>
+  
+  <Step title="Run the restack command">
+    Execute Restack with your commit range and base branch:
+    
+    ```bash
+    restack 938fa82e f80ce55b origin/feature/anytime
+    ```
+    
+    Restack will:
+    1. Analyze the commit range
+    2. Identify PR boundaries based on branches
+    3. Display the discovered PRs and reorganization plan
+  </Step>
+  
+  <Step title="Review and confirm the plan">
+    Restack shows you the PR ranges it discovered and the branch chain structure:
+    
+    ```
+    📚 Discovered PR ranges:
+      feature/add-api ← 938fa82 ~ a3b4c5d (3 commits)
+      feature/add-tests ← d6e7f8g ~ f80ce55 (2 commits)
+    
+    📚 Re-stack plan:
+    Base: origin/feature/anytime
+      └─ feature/add-api
+          └─ feature/add-tests
+    
+    ⚠️  Proceed with this plan? (y/n)
+    ```
+    
+    Review the plan carefully and type `y` to continue.
+  </Step>
+  
+  <Step title="Handle conflicts (if any)">
+    If cherry-pick conflicts occur, Restack pauses and offers options:
+    
+    ```
+    ⚠️  Conflict detected. How do you want to proceed?
+       1) Resolve conflicts and continue (git cherry-pick --continue)
+       2) Skip this commit (git cherry-pick --skip)
+       3) Abort entire operation (git cherry-pick --abort)
+    Choose (1/2/3):
+    ```
+    
+    To resolve conflicts:
+    1. Select option `1`
+    2. Fix the conflicts in your editor
+    3. Stage the resolved files: `git add .`
+    4. Press Enter to continue
+  </Step>
+  
+  <Step title="Address type checking (if enabled)">
+    After each PR is reorganized, Restack runs TypeScript type checking. If errors are found:
+    
+    ```
+    🔍 Type checking... (feature/add-api)
+       ❌ Type checking failed!
+    
+    ⚠️  Type errors detected. How do you want to proceed?
+       1) Fix type errors and continue
+       2) Abort entire operation
+    Choose (1/2):
+    ```
+    
+    Select option `1`, fix the errors, and press Enter to retry type checking.
+  </Step>
+  
+  <Step title="Push the new branches">
+    Once reorganization completes, Restack asks if you want to push:
+    
+    ```
+    💡 Push all created branches to remote? (y/n)
+    ```
+    
+    Type `y` to push all branches with `--force-with-lease`, or `n` to push manually later.
+  </Step>
+</Steps>
+
+## What happens during reorganization
+
+Here's what Restack does behind the scenes:
+
+### Temporary branches
+
+Restack creates temporary branches with the `RESTACK-` prefix for each PR. For example:
+- `RESTACK-feature/add-api`
+- `RESTACK-feature/add-tests`
+
+These temporary branches are renamed to the final branch names only after type checking passes.
+
+### Cherry-pick sequence
+
+For each PR:
+1. Create a new temporary branch from the previous PR's branch (or base branch for the first PR)
+2. Cherry-pick all commits in the PR range sequentially
+3. Run type checking on the temporary branch
+4. Rename the temporary branch to the final name
+
+### Branch chain structure
+
+The result is a clean branch chain where:
+- First PR builds on the base branch
+- Second PR builds on the first PR's branch
+- Third PR builds on the second PR's branch
+- And so on...
+
+## Example workflow
+
+Here's a complete real-world example:
+
+```bash
+# View your commit history
+git log --oneline --decorate
+
+# Run restack with your commit range
+restack 938fa82e f80ce55b origin/feature/anytime
+
+# Review the plan and confirm with 'y'
+
+# If conflicts occur, resolve them:
+# 1. Edit the conflicted files
+# 2. git add .
+# 3. Press Enter
+
+# If type errors occur, fix them:
+# 1. Edit the files with errors
+# 2. git add .
+# 3. git commit --amend --no-edit (if prompted)
+# 4. Press Enter
+
+# Push the new branches when prompted with 'y'
+```
+
+## Common use cases
+
+<CardGroup cols={2}>
+  <Card title="Change base branch">
+    Reorganize PRs to build on a different base:
+    ```bash
+    restack abc123 def456 origin/main
+    ```
+  </Card>
+  
+  <Card title="Clean up history">
+    Create clean branches from messy commits:
+    ```bash
+    restack 938fa82 f80ce55 origin/develop
+    ```
+  </Card>
+  
+  <Card title="Restack after conflicts">
+    Continue from where you left off:
+    ```bash
+    restack d6e7f8 f80ce55 feature/add-api
+    ```
+  </Card>
+  
+  <Card title="Update PR chain">
+    Rebuild stacked PRs after base changes:
+    ```bash
+    restack start-hash end-hash origin/feature/updated
+    ```
+  </Card>
+</CardGroup>
+
+## Tips for success
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+  <Accordion title="Always commit your work first">
+    Restack modifies branches and commit history. Save your work before running it:
+    ```bash
+    git add .
+    git commit -m "Save work before restack"
+    ```
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+  
+  <Accordion title="Use descriptive branch names">
+    Since Restack uses branch names to identify PRs, choose clear, descriptive names:
+    - Good: `feature/add-user-auth`, `fix/payment-bug`
+    - Avoid: `temp`, `branch1`, `test`
   </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
+  
+  <Accordion title="Keep commit ranges manageable">
+    Start with smaller ranges (5-10 commits) to get familiar with the tool before tackling larger reorganizations.
+  </Accordion>
+  
+  <Accordion title="Review the plan carefully">
+    Always read the reorganization plan before confirming. Make sure the PR boundaries and branch chain match your expectations.
   </Accordion>
 </AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've completed your first restack, explore more advanced features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="How it works" icon="gear" href="/concepts/how-it-works">
+    Deep dive into Restack's internals
+  </Card>
+  
+  <Card title="Command reference" icon="terminal" href="/usage/command-reference">
+    Complete command documentation
+  </Card>
+  
+  <Card title="Conflict resolution" icon="wrench" href="/usage/conflict-resolution">
+    Master conflict handling
+  </Card>
+  
+  <Card title="Troubleshooting" icon="life-ring" href="/reference/troubleshooting">
+    Fix common issues
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

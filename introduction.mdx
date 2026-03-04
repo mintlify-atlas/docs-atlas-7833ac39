@@ -1,0 +1,107 @@
+---
+title: Introduction
+description: Learn about Restack CLI, a powerful tool for reorganizing Git commits by PR units
+---
+
+Restack CLI is a command-line tool that reorganizes Git commits by Pull Request (PR) units, creating clean branch chains that reflect your PR structure.
+
+## What is Restack CLI?
+
+Restack CLI analyzes your Git commit history and reorganizes commits based on the branches associated with them. It groups commits by PR boundaries and uses cherry-pick to create new, clean branch chains that stack on top of each other.
+
+This is particularly useful when:
+- You have multiple PRs that need to be reorganized
+- You want to change the base branch of a series of PRs
+- You need to maintain clean commit history across dependent PRs
+
+## Key features
+
+Restack CLI provides several powerful capabilities:
+
+### Automatic PR range analysis
+
+The tool automatically identifies PR boundaries by finding commits with associated branches. It groups commits into PR units based on these branch markers, eliminating manual work.
+
+### Cherry-pick based reorganization
+
+Each PR's commits are cherry-picked sequentially to create new branch chains. The first PR builds on your base branch, and subsequent PRs stack on the previous PR's branch.
+
+### Built-in type checking
+
+After completing each PR, Restack runs TypeScript type checking to ensure code quality. If type errors are detected, you can fix them before continuing.
+
+### Interactive conflict resolution
+
+When cherry-pick conflicts occur, Restack provides interactive options:
+- Resolve conflicts and continue
+- Skip the problematic commit
+- Abort the entire operation
+
+### Colorized terminal output
+
+Clear, color-coded output helps you track progress through the reorganization process.
+
+## How it works
+
+Restack follows a systematic workflow:
+
+<Steps>
+  <Step title="Analyze commit range">
+    Fetch all commits between your start and end commit hashes
+  </Step>
+  
+  <Step title="Identify PR boundaries">
+    Find commits with local branches attached - these mark PR boundaries
+  </Step>
+  
+  <Step title="Display reorganization plan">
+    Show the discovered PR ranges and branch chain structure for confirmation
+  </Step>
+  
+  <Step title="Execute cherry-picks">
+    Cherry-pick commits for each PR sequentially, creating temporary branches
+  </Step>
+  
+  <Step title="Run type checks">
+    Execute TypeScript type checking after each PR completes
+  </Step>
+  
+  <Step title="Finalize branches">
+    Convert temporary branches (with `RESTACK-` prefix) to final branch names
+  </Step>
+</Steps>
+
+## Requirements
+
+Before using Restack CLI, ensure you have:
+
+- Node.js >= 14.0.0
+- Git installed and configured
+- Local branches pointing to the last commit of each PR you want to reorganize
+- A TypeScript project (if using type checking features)
+- A `uglyus-web` directory in your project root (for type checking)
+
+<Note>
+  Each PR must have a local branch pointing to its last commit. This is how Restack identifies PR boundaries.
+</Note>
+
+## When to use Restack CLI
+
+Consider using Restack when you need to:
+
+- Change the base branch for a series of stacked PRs
+- Reorganize commits that span multiple PRs
+- Create clean branch chains from messy commit history
+- Maintain proper PR dependencies after rebasing
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Install Restack" icon="download" href="/installation">
+    Set up Restack CLI on your machine
+  </Card>
+  
+  <Card title="Quick start guide" icon="rocket" href="/quickstart">
+    Run your first restack command
+  </Card>
+</CardGroup>

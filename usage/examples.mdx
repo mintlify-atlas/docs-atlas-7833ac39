@@ -1,0 +1,562 @@
+---
+title: Usage Examples
+description: Real-world scenarios and examples for using the restack command effectively
+---
+
+## Basic Examples
+
+### Restack Two PRs
+
+Restack two feature branches onto the default base:
+
+```bash
+restack 938fa82e f80ce55b
+```
+
+**Scenario:**
+- PR 1: `feature/add-user-auth` (commits 938fa82e, a1b2c3d, e7f8g9h)
+- PR 2: `feature/update-profile` (commits i1j2k3l, f80ce55b)
+- Base: `origin/feature/anytime` (default)
+
+**Output:**
+```bash
+📋 커밋 범위 확인 중...
+✅ 5개의 커밋을 발견했습니다.
+
+🔍 PR 범위 분석 중...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 발견된 PR 범위:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  feature/add-user-auth ← 938fa82 ~ e7f8g9h (3 커밋)
+  feature/update-profile ← i1j2k3l ~ f80ce55 (2 커밋)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Re-stack 계획:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Base: origin/feature/anytime
+  └─ feature/add-user-auth
+      └─ feature/update-profile
+```
+
+### Restack onto Main Branch
+
+Restack PRs onto a production branch:
+
+```bash
+restack abc1234 def5678 origin/main
+```
+
+**Use Case:** Moving feature branches from a development base to production.
+
+### Restack onto Another Feature Branch
+
+Stack new PRs on top of an existing feature:
+
+```bash
+restack m4n5o6p q7r8s9t feature/base-feature
+```
+
+**Use Case:** Creating dependent features that build on each other.
+
+## Advanced Scenarios
+
+### Scenario 1: Restack with Conflict Resolution
+
+**Setup:**
+- Restacking 3 PRs
+- Second PR has conflicts
+- Resolve conflicts and continue
+
+**Commands:**
+```bash
+restack a1b2c3d x9y8z7w origin/main
+```
+
+**Interaction:**
+```bash
+[PR 1/3] feature/api-client
+   Cherry-picking a1b2c3d...
+      ✅ 성공
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+[PR 2/3] feature/ui-components
+   Cherry-picking d4e5f6g...
+      ❌ 충돌 발생!
+
+⚠️  충돌이 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 충돌 해결 후 계속
+   2) 이 커밋 스킵
+   3) 전체 작업 중단
+선택 (1/2/3): 1
+
+💡 충돌을 해결하세요. 완료되면 Enter를 누르세요.
+```
+
+**Resolution in another terminal:**
+```bash
+$ git status
+Unmerged paths:
+  both modified:   src/components/Button.tsx
+
+$ vim src/components/Button.tsx
+# Resolve conflicts
+
+$ git add src/components/Button.tsx
+```
+
+**Continue:**
+```bash
+충돌 해결 완료 후 Enter: [ENTER]
+      ✅ cherry-pick --continue 성공
+
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+```
+
+### Scenario 2: Type Error Fixing
+
+**Setup:**
+- First PR passes all checks
+- Second PR has type errors
+- Fix errors and amend commit
+
+**Commands:**
+```bash
+restack start123 end456
+```
+
+**Interaction:**
+```bash
+[PR 1/2] feature/database-schema
+   Cherry-picking start123...
+      ✅ 성공
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+[PR 2/2] feature/user-service
+   Cherry-picking mid789...
+      ✅ 성공
+   Cherry-picking end456...
+      ✅ 성공
+
+🔍 타입 검사 중... (RESTACK-feature/user-service)
+src/services/userService.ts:23:10 - error TS2339: Property 'id' does not exist on type 'User'.
+
+   ❌ 타입 검사 실패!
+
+⚠️  타입 에러가 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 타입 에러 수정 후 계속
+   2) 전체 작업 중단
+선택 (1/2): 1
+```
+
+**Fix in another terminal:**
+```bash
+$ cd uglyus-web
+$ npx tsc --noEmit
+error TS2339: Property 'id' does not exist on type 'User'.
+
+$ vim src/services/userService.ts
+# Change user.id to user.userId
+
+$ npx tsc --noEmit
+# No errors
+```
+
+**Continue:**
+```bash
+타입 에러 수정 완료 후 Enter: [ENTER]
+   변경사항이 감지되었습니다. 마지막 커밋에 추가하시겠습니까? (y/n)
+선택: y
+   ✅ 변경사항이 마지막 커밋에 추가되었습니다.
+
+🔄 타입 검사 재실행 중...
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+   🔄 RESTACK-feature/user-service → feature/user-service
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Re-stack 완료!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### Scenario 3: Partial Restack After Abort
+
+**Setup:**
+- Restack 4 PRs
+- Abort at PR 3 due to complex conflicts
+- Resume from where it stopped
+
+**Initial command:**
+```bash
+restack a1a1a1a d4d4d4d origin/main
+```
+
+**Abort after PR 2:**
+```bash
+[PR 1/4] feature/auth
+   ✅ 성공
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+[PR 2/4] feature/api
+   ✅ 성공
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+[PR 3/4] feature/ui
+   Cherry-picking c3c3c3c...
+      ❌ 충돌 발생!
+
+선택 (1/2/3): 3
+
+🛑 전체 작업 중단 중...
+🧹 임시 브랜치 정리 중...
+
+❌ 작업이 중단되었습니다.
+
+💡 다시 시작하려면 다음 명령어를 실행하세요:
+   restack c3c3c3c d4d4d4d feature/api
+```
+
+**Fix conflicts in original commits:**
+```bash
+$ git checkout feature/ui
+$ git rebase -i feature/api
+# Fix conflicts and update commits
+$ git push --force-with-lease
+```
+
+**Resume restacking:**
+```bash
+restack c3c3c3c d4d4d4d feature/api
+```
+
+**Output:**
+```bash
+[PR 1/2] feature/ui
+   Cherry-picking c3c3c3c...
+      ✅ 성공  # No conflicts this time!
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+[PR 2/2] feature/dashboard
+   Cherry-picking d4d4d4d...
+      ✅ 성공
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+✅ Re-stack 완료!
+```
+
+### Scenario 4: Skip Problematic Commits
+
+**Setup:**
+- One commit in the middle is no longer needed
+- Skip it and continue with the rest
+
+**Commands:**
+```bash
+restack start999 end888
+```
+
+**Interaction:**
+```bash
+[PR 1/1] feature/large-refactor
+   Cherry-picking start999...
+      ✅ 성공
+   Cherry-picking mid111...
+      ❌ 충돌 발생!
+
+선택 (1/2/3): 2
+⏭️  커밋 스킵 중...
+      ✅ 커밋 스킵됨
+
+   Cherry-picking mid222...
+      ✅ 성공
+   Cherry-picking end888...
+      ✅ 성공
+
+🔍 타입 검사 중...
+   ✅ 타입 검사 통과
+
+✅ Re-stack 완료!
+```
+
+<Warning>
+Skipping commits may cause issues if later commits depend on the skipped changes. Use with caution.
+</Warning>
+
+## Production Workflows
+
+### Workflow 1: Development to Production
+
+**Goal:** Move features from development branch to production.
+
+**Steps:**
+
+1. **Identify commit range:**
+   ```bash
+   git log --oneline origin/develop
+   # Find start and end commits
+   ```
+
+2. **Restack onto production:**
+   ```bash
+   restack a1b2c3d x9y8z7w origin/production
+   ```
+
+3. **Review and test:**
+   ```bash
+   git checkout feature/first-pr
+   npm test
+   npm run build
+   ```
+
+4. **Push to remote:**
+   ```bash
+   # During restack:
+   💡 생성된 모든 브랜치를 원격에 푸시하시겠습니까? (y/n)
+   선택: y
+   
+   🚀 모든 브랜치 푸시 중...
+   ```
+
+5. **Create PRs:**
+   ```bash
+   gh pr create --base production --head feature/first-pr
+   gh pr create --base feature/first-pr --head feature/second-pr
+   ```
+
+### Workflow 2: Rebasing Stacked PRs
+
+**Goal:** Update stacked PRs after base branch changes.
+
+**Steps:**
+
+1. **Fetch latest changes:**
+   ```bash
+   git fetch origin
+   ```
+
+2. **Identify your PR stack:**
+   ```bash
+   git log --oneline --graph feature/pr-1 feature/pr-2 feature/pr-3
+   ```
+
+3. **Find commit range:**
+   ```bash
+   # First commit in feature/pr-1
+   git log --reverse feature/pr-1 | head -n 1
+   # Last commit in feature/pr-3
+   git log -1 feature/pr-3
+   ```
+
+4. **Restack onto updated base:**
+   ```bash
+   restack abc1234 xyz9876 origin/main
+   ```
+
+5. **Force push updated branches:**
+   ```bash
+   # After restack completes
+   선택: y  # Push all branches
+   ```
+
+### Workflow 3: Emergency Hotfix Stack
+
+**Goal:** Quickly create and stack hotfix PRs.
+
+**Steps:**
+
+1. **Create hotfix commits:**
+   ```bash
+   git checkout -b hotfix/critical-bug origin/main
+   # Make fix
+   git commit -m "Fix critical authentication bug"
+   
+   git checkout -b hotfix/add-monitoring origin/main
+   git cherry-pick hotfix/critical-bug
+   # Add monitoring
+   git commit -m "Add monitoring for auth failures"
+   ```
+
+2. **Restack for clean history:**
+   ```bash
+   # Get commit hashes
+   FIRST=$(git log --reverse hotfix/critical-bug --format=%h | head -n 1)
+   LAST=$(git log -1 hotfix/add-monitoring --format=%h)
+   
+   restack $FIRST $LAST origin/main
+   ```
+
+3. **Deploy immediately:**
+   ```bash
+   # Push and create PRs
+   선택: y
+   
+   gh pr create --base main --head hotfix/critical-bug --title "[HOTFIX] Fix auth bug"
+   gh pr create --base hotfix/critical-bug --head hotfix/add-monitoring --title "[HOTFIX] Add monitoring"
+   ```
+
+## Tips and Tricks
+
+### Finding Commit Hashes Quickly
+
+**Get the first commit in a branch:**
+```bash
+git log --reverse feature/my-branch --format=%h | head -n 1
+```
+
+**Get the last commit in a branch:**
+```bash
+git log -1 feature/my-branch --format=%h
+```
+
+**Visual commit range:**
+```bash
+git log --oneline --graph abc1234..xyz9876
+```
+
+### Dry Run Before Restacking
+
+**Check what commits will be included:**
+```bash
+git rev-list --reverse abc1234^..xyz9876
+```
+
+**See commit messages:**
+```bash
+git log --oneline abc1234^..xyz9876
+```
+
+**Check for potential conflicts:**
+```bash
+git diff origin/main...feature/my-branch
+```
+
+### Recovering from Mistakes
+
+**Restack created wrong branches:**
+```bash
+# The old branches still exist until you push
+git branch -D feature/wrong-branch
+git checkout -b feature/correct-branch original-commit-hash
+```
+
+**Restack was aborted but you want to restart:**
+```bash
+# Use the suggested command from the abort message
+restack <failed-commit> <end-commit> <last-success-branch>
+```
+
+**Need to modify a commit before restacking:**
+```bash
+git checkout feature/original-branch
+git rebase -i HEAD~3  # Edit the commits
+git push --force-with-lease
+# Then restack again
+```
+
+## Common Patterns
+
+### Pattern 1: Daily Rebase
+
+Keep PRs up-to-date with main:
+
+```bash
+# Every morning:
+git fetch origin
+restack $(git log --reverse feature/pr-1 --format=%h | head -n 1) \
+         $(git log -1 feature/pr-3 --format=%h) \
+         origin/main
+```
+
+### Pattern 2: Pre-Merge Cleanup
+
+Clean up PR stack before merging:
+
+```bash
+# Squash and reorganize commits first
+git checkout feature/pr-1
+git rebase -i origin/main
+
+# Then restack
+restack <new-first-commit> <new-last-commit> origin/main
+```
+
+### Pattern 3: Cross-Team Dependencies
+
+Stack your PRs on another team's feature:
+
+```bash
+# Wait for their PR to be merged or use their branch
+restack your-first-commit your-last-commit other-team/feature-branch
+
+# When their branch updates:
+restack your-first-commit your-last-commit other-team/feature-branch
+```
+
+## Troubleshooting Examples
+
+### Issue: "No branches found"
+
+**Problem:**
+```bash
+❌ 브랜치가 연결된 커밋을 찾을 수 없습니다.
+💡 각 PR의 마지막 커밋에 로컬 브랜치가 있어야 합니다.
+```
+
+**Solution:**
+```bash
+# Create branches for PR endpoints
+git branch feature/pr-1 a1b2c3d  # Last commit of PR 1
+git branch feature/pr-2 x9y8z7w  # Last commit of PR 2
+
+# Now restack
+restack start-commit end-commit
+```
+
+### Issue: Type check hangs
+
+**Problem:** Type checking never completes.
+
+**Solution:**
+```bash
+# In another terminal:
+cd uglyus-web
+ls -la node_modules  # Check if exists
+npm install  # Install if missing
+
+# Cancel and restart restack
+```
+
+### Issue: Wrong commit range
+
+**Problem:** Too many or too few commits included.
+
+**Solution:**
+```bash
+# Double-check the range
+git log --oneline start-commit^..end-commit
+
+# Use correct range
+restack correct-start correct-end
+```
+
+## Related Topics
+
+<CardGroup cols={3}>
+  <Card title="Command Reference" icon="terminal" href="/usage/command-reference">
+    Full parameter details
+  </Card>
+  <Card title="Conflict Resolution" icon="code-merge" href="/usage/conflict-resolution">
+    Handle merge conflicts
+  </Card>
+  <Card title="Type Checking" icon="check-circle" href="/usage/type-checking">
+    Fix TypeScript errors
+  </Card>
+</CardGroup>

@@ -1,0 +1,277 @@
+---
+title: Troubleshooting
+description: Common issues and solutions when using Restack CLI
+---
+
+## Common Errors
+
+### No Branch-Connected Commits Found
+
+**Error Message** (bin/restack:136-139):
+```
+❌ 브랜치가 연결된 커밋을 찾을 수 없습니다.
+💡 각 PR의 마지막 커밋에 로컬 브랜치가 있어야 합니다.
+```
+
+**Cause**: The CLI cannot find any commits in your range that have local branches pointing to them.
+
+**Solution**:
+1. Ensure each PR's final commit has a local branch
+2. Create branches for PR endpoints:
+   ```bash
+   git branch pr-1-endpoint <commit-hash>
+   git branch pr-2-endpoint <commit-hash>
+   ```
+3. Verify branches exist:
+   ```bash
+   git branch --list --points-at <commit-hash>
+   ```
+
+<Note>
+The CLI uses local branches to identify PR boundaries. Without branches on the last commit of each PR, it cannot determine where one PR ends and another begins.
+</Note>
+
+---
+
+### Fetch Failures
+
+**Error Message** (bin/restack:44-46):
+```
+❌ fetch 실패: origin/<branch-name>
+```
+
+**Cause**: The CLI cannot fetch the specified remote branch.
+
+**Solutions**:
+1. **Check network connectivity**:
+   ```bash
+   ping github.com
+   ```
+
+2. **Verify remote exists**:
+   ```bash
+   git remote -v
+   ```
+
+3. **Check branch exists on remote**:
+   ```bash
+   git ls-remote --heads origin
+   ```
+
+4. **Manually fetch**:
+   ```bash
+   git fetch origin <branch-name>
+   ```
+
+5. **Use a local branch instead**:
+   ```bash
+   restack <start> <end> local-branch-name
+   ```
+
+---
+
+### Invalid Commit Range
+
+**Error Message** (bin/restack:64-67):
+```
+❌ 지정된 커밋 범위를 찾을 수 없습니다.
+💡 커밋 해시가 올바른지 확인해주세요.
+```
+
+**Cause**: The specified commit hashes are invalid or don't exist in the repository.
+
+**Solutions**:
+1. **Verify commits exist**:
+   ```bash
+   git log --oneline | grep <commit-hash>
+   ```
+
+2. **Use full or partial commit hashes**:
+   ```bash
+   # Short hash (7 characters)
+   restack 938fa82 f80ce55
+   
+   # Full hash
+   restack 938fa82e1234567890abcdef f80ce55b1234567890abcdef
+   ```
+
+3. **Check commit history**:
+   ```bash
+   git log --oneline --graph
+   ```
+
+---
+
+### Missing uglyus-web Directory
+
+**Error Message** (bin/restack:35-37):
+```
+❌ uglyus-web 디렉토리를 찾을 수 없습니다.
+```
+
+**Cause**: The required `uglyus-web` directory doesn't exist in your project root.
+
+**Solutions**:
+1. **Create the directory**:
+   ```bash
+   mkdir uglyus-web
+   ```
+
+2. **Check current location**:
+   ```bash
+   git rev-parse --show-toplevel
+   ls $(git rev-parse --show-toplevel)
+   ```
+
+3. **Ensure you're in a Git repository**:
+   ```bash
+   git status
+   ```
+
+<Warning>
+The `uglyus-web` directory must exist at the Git repository root for the CLI to run, even if you're not using TypeScript type checking.
+</Warning>
+
+---
+
+### Type Check Failures
+
+**Error Message** (bin/restack:92):
+```
+❌ 타입 검사 실패!
+```
+
+**Cause**: TypeScript compilation errors detected after cherry-picking commits.
+
+**Interactive Options**:
+When type checking fails, you'll see:
+```
+⚠️  타입 에러가 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 타입 에러 수정 후 계속
+   2) 전체 작업 중단
+```
+
+**Solutions**:
+
+1. **Option 1: Fix and continue**
+   - Fix type errors in your editor
+   - The CLI will prompt to amend the last commit
+   - Press Enter to retry type checking
+
+2. **Option 2: Abort and restart**
+   - The CLI provides a restart command:
+     ```bash
+     restack <failed-commit> <end-commit> <last-success-branch>
+     ```
+   - Fix type errors in the original commits
+   - Restart from the failed commit
+
+**Manual Type Checking**:
+```bash
+cd uglyus-web
+npx tsc --noEmit
+```
+
+---
+
+### Cherry-Pick Conflicts
+
+**Error Message** (bin/restack:238):
+```
+❌ 충돌 발생!
+```
+
+**Cause**: Git cannot automatically merge changes when cherry-picking a commit.
+
+**Interactive Options**:
+When conflicts occur, you'll see:
+```
+⚠️  충돌이 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 충돌 해결 후 계속 (git cherry-pick --continue)
+   2) 이 커밋 스킵 (git cherry-pick --skip)
+   3) 전체 작업 중단 (git cherry-pick --abort)
+```
+
+**Solutions**:
+
+1. **Option 1: Resolve and continue**
+   ```bash
+   # View conflicts
+   git status
+   
+   # Edit conflicting files
+   vim <conflicted-file>
+   
+   # Mark as resolved
+   git add <conflicted-file>
+   
+   # Press Enter in CLI to continue
+   ```
+
+2. **Option 2: Skip commit**
+   - Use when the commit is not needed
+   - The CLI will continue with remaining commits
+
+3. **Option 3: Abort completely**
+   - Stops the entire restack operation
+   - Cleans up temporary branches
+   - Provides restart command
+
+**Preventing Conflicts**:
+- Ensure commits are ordered correctly
+- Resolve conflicts in original branches first
+- Use smaller, more focused commits
+
+---
+
+## Invalid Command Usage
+
+**Error Message** (bin/restack:18-20):
+```
+❌ 사용법: restack <start-commit> <end-commit> [base-branch]
+예시: restack 938fa82e f80ce55b origin/feature/anytime
+```
+
+**Cause**: Incorrect number of arguments provided.
+
+**Required Arguments**:
+1. `start-commit`: First commit in the range
+2. `end-commit`: Last commit in the range
+3. `base-branch` (optional): Defaults to `origin/feature/anytime`
+
+**Correct Usage**:
+```bash
+# With default base branch
+restack abc123 def456
+
+# With custom base branch
+restack abc123 def456 origin/main
+
+# With local base branch
+restack abc123 def456 my-feature-branch
+```
+
+---
+
+## Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check Git status**:
+   ```bash
+   git status
+   git log --oneline --graph
+   ```
+
+2. **Review CLI output**: The CLI provides colored output with clear error messages
+
+3. **Manual cleanup** (if needed):
+   ```bash
+   # Remove temporary branches
+   git branch | grep RESTACK- | xargs git branch -D
+   
+   # Return to original branch
+   git checkout <original-branch>
+   ```
+
+4. **Report issues**: If you find a bug, report it at the project repository

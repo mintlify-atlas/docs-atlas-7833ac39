@@ -1,0 +1,218 @@
+---
+title: Command Reference
+description: Complete reference for the restack command with parameters, defaults, and usage examples
+---
+
+## Command Syntax
+
+```bash
+restack <start-commit> <end-commit> [base-branch]
+```
+
+The `restack` command re-applies a series of commits onto a new base branch while preserving PR boundaries, running type checks, and handling conflicts interactively.
+
+## Parameters
+
+<ParamField path="start-commit" type="string" required>
+  The first commit hash in the range to restack. This commit will be included in the operation.
+  
+  **Example:** `938fa82e` or full hash `938fa82e1c3d4b5a6e7f8a9b0c1d2e3f4a5b6c7d`
+</ParamField>
+
+<ParamField path="end-commit" type="string" required>
+  The last commit hash in the range to restack. This commit will be included in the operation.
+  
+  **Example:** `f80ce55b` or full hash `f80ce55b1c3d4b5a6e7f8a9b0c1d2e3f4a5b6c7d`
+</ParamField>
+
+<ParamField path="base-branch" type="string" default="origin/feature/anytime">
+  The base branch to restack onto. Can be a local or remote branch.
+  
+  **Default:** `origin/feature/anytime`
+  
+  **Examples:**
+  - Remote branch: `origin/main`, `origin/develop`
+  - Local branch: `main`, `feature/new-base`
+</ParamField>
+
+## How It Works
+
+### 1. Commit Range Analysis
+
+The tool analyzes the specified commit range (`start-commit` to `end-commit`) and identifies all commits in that range:
+
+```bash
+📋 커밋 범위 확인 중...
+✅ 5개의 커밋을 발견했습니다.
+```
+
+### 2. PR Boundary Detection
+
+Restack automatically detects PR boundaries by finding commits that have associated local branches:
+
+```bash
+🔍 PR 범위 분석 중...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 발견된 PR 범위:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  feature/add-user-auth ← 938fa82 ~ a1b2c3d (3 커밋)
+  feature/update-profile ← d4e5f6g ~ f80ce55 (2 커밋)
+```
+
+<Note>
+Each PR's last commit must have a local branch pointing to it for proper detection.
+</Note>
+
+### 3. Re-stack Plan Confirmation
+
+Before execution, restack shows the planned branch hierarchy:
+
+```bash
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Re-stack 계획:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Base: origin/feature/anytime
+  └─ feature/add-user-auth
+      └─ feature/update-profile
+
+⚠️  위 계획대로 진행하시겠습니까? (y/n)
+```
+
+### 4. Cherry-Pick Process
+
+Restack creates temporary branches (prefixed with `RESTACK-`) and cherry-picks commits:
+
+```bash
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[PR 1/2] feature/add-user-auth
+   임시 브랜치: RESTACK-feature/add-user-auth
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Cherry-picking 938fa82...
+      Add user authentication endpoint
+      ✅ 성공
+```
+
+### 5. Type Checking
+
+After all commits in a PR are applied, TypeScript type checking runs automatically:
+
+```bash
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ✅ 타입 검사 통과
+```
+
+### 6. Branch Finalization
+
+Once type checking passes, temporary branches are renamed to their final names:
+
+```bash
+   🔄 RESTACK-feature/add-user-auth → feature/add-user-auth
+```
+
+## Usage Examples
+
+### Basic Usage
+
+Restack commits with default base branch:
+
+```bash
+restack 938fa82e f80ce55b
+```
+
+### Custom Base Branch
+
+Restack onto a specific branch:
+
+```bash
+restack 938fa82e f80ce55b origin/main
+```
+
+### Local Base Branch
+
+Restack onto a local branch:
+
+```bash
+restack abc1234 def5678 develop
+```
+
+### Single Commit
+
+Restack a single commit (start and end are the same):
+
+```bash
+restack a1b2c3d a1b2c3d origin/main
+```
+
+## Output and Results
+
+Upon successful completion, restack displays:
+
+```bash
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Re-stack 완료!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 생성된 브랜치 목록:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  feature/add-user-auth (a1b2c3d) - Add user authentication endpoint
+  feature/update-profile (f80ce55) - Update user profile page
+
+📌 현재 브랜치: feature/update-profile
+
+💡 생성된 모든 브랜치를 원격에 푸시하시겠습니까? (y/n)
+```
+
+## Push to Remote
+
+After restacking, you can optionally push all branches to the remote repository:
+
+- **Option y:** Push all branches with `--force-with-lease`
+- **Option n:** Skip pushing (you can push manually later)
+
+```bash
+🚀 모든 브랜치 푸시 중...
+  푸시 중: feature/add-user-auth...
+  푸시 중: feature/update-profile...
+✅ 모든 브랜치 푸시 완료!
+```
+
+## Error Handling
+
+### Invalid Commit Range
+
+```bash
+❌ 지정된 커밋 범위를 찾을 수 없습니다.
+💡 커밋 해시가 올바른지 확인해주세요.
+```
+
+### No Branch Detection
+
+```bash
+❌ 브랜치가 연결된 커밋을 찾을 수 없습니다.
+💡 각 PR의 마지막 커밋에 로컬 브랜치가 있어야 합니다.
+```
+
+### Missing uglyus-web Directory
+
+```bash
+❌ uglyus-web 디렉토리를 찾을 수 없습니다.
+```
+
+<Note>
+The tool expects a `uglyus-web` directory in the project root for TypeScript type checking.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Conflict Resolution" icon="code-merge" href="/usage/conflict-resolution">
+    Learn how to handle merge conflicts during restacking
+  </Card>
+  <Card title="Type Checking" icon="check-circle" href="/usage/type-checking">
+    Understand how TypeScript type checking works
+  </Card>
+  <Card title="Examples" icon="book" href="/usage/examples">
+    See real-world usage scenarios
+  </Card>
+</CardGroup>

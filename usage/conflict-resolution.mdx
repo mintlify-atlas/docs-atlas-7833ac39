@@ -1,0 +1,324 @@
+---
+title: Conflict Resolution
+description: Learn how to handle merge conflicts during the restacking process
+---
+
+## Overview
+
+When cherry-picking commits during a restack operation, merge conflicts may occur. Restack provides an interactive conflict resolution workflow that gives you complete control over how to handle each conflict.
+
+## When Conflicts Occur
+
+Conflicts happen during the cherry-pick process when changes in the commit being applied overlap with changes already present in the target branch:
+
+```bash
+   Cherry-picking a1b2c3d...
+      Update user authentication logic
+      ❌ 충돌 발생!
+```
+
+## Interactive Resolution Menu
+
+When a conflict is detected, restack pauses and presents three options:
+
+```bash
+⚠️  충돌이 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 충돌 해결 후 계속 (git cherry-pick --continue)
+   2) 이 커밋 스킵 (git cherry-pick --skip)
+   3) 전체 작업 중단 (git cherry-pick --abort)
+선택 (1/2/3):
+```
+
+### Option 1: Resolve and Continue
+
+Resolve the conflict manually and continue with the restack operation.
+
+#### Workflow
+
+1. **Enter Option 1:**
+   ```bash
+   선택 (1/2/3): 1
+   ```
+
+2. **Restack Pauses:**
+   ```bash
+   💡 충돌을 해결하세요. 완료되면 Enter를 누르세요.
+      현재 브랜치: RESTACK-feature/add-user-auth
+   충돌 해결 완료 후 Enter:
+   ```
+
+3. **Resolve the Conflict:**
+   Open the conflicted files in your editor and resolve the conflicts manually:
+   
+   ```bash
+   # In another terminal
+   git status
+   # Shows files with conflicts
+   
+   # Edit the files to resolve conflicts
+   vim src/auth/login.ts
+   
+   # Stage resolved files
+   git add src/auth/login.ts
+   ```
+
+4. **Press Enter:**
+   Once all conflicts are resolved and staged, return to the restack terminal and press Enter.
+
+5. **Automatic Continue:**
+   Restack runs `git cherry-pick --continue` automatically:
+   ```bash
+         ✅ cherry-pick --continue 성공
+   ```
+
+<Note>
+If `git cherry-pick --continue` fails, restack will loop back to the resolution menu, allowing you to try again.
+</Note>
+
+#### Example Resolution Process
+
+```bash
+# Terminal 1: Restack is running
+❌ 충돌 발생!
+선택 (1/2/3): 1
+💡 충돌을 해결하세요. 완료되면 Enter를 누르세요.
+
+# Terminal 2: Resolve conflicts
+$ git status
+On branch RESTACK-feature/add-user-auth
+You are currently cherry-picking commit a1b2c3d.
+
+Unmerged paths:
+  both modified:   src/auth/login.ts
+
+$ vim src/auth/login.ts
+# Resolve conflicts in the editor
+
+$ git add src/auth/login.ts
+$ git status
+On branch RESTACK-feature/add-user-auth
+All conflicts fixed but you are still cherry-picking.
+
+# Terminal 1: Press Enter
+충돌 해결 완료 후 Enter: [ENTER]
+      ✅ cherry-pick --continue 성공
+```
+
+### Option 2: Skip This Commit
+
+Skip the conflicting commit and continue with the next commit in the sequence.
+
+#### When to Use
+
+- The commit is no longer needed
+- The changes conflict with intentional modifications in the base branch
+- You plan to apply the changes manually later
+
+#### Workflow
+
+```bash
+선택 (1/2/3): 2
+⏭️  커밋 스킵 중...
+      ✅ 커밋 스킵됨
+```
+
+Restack runs `git cherry-pick --skip` and continues with the next commit.
+
+<Warning>
+Skipping commits may cause issues if later commits depend on the skipped changes.
+</Warning>
+
+### Option 3: Abort Entire Operation
+
+Stop the entire restack process and clean up temporary branches.
+
+#### When to Use
+
+- Too many conflicts to resolve efficiently
+- You need to prepare the commits differently
+- You want to restart with a different strategy
+
+#### Workflow
+
+1. **Enter Option 3:**
+   ```bash
+   선택 (1/2/3): 3
+   ```
+
+2. **Cleanup Process:**
+   ```bash
+   🛑 전체 작업 중단 중...
+   🧹 임시 브랜치 정리 중...
+   ```
+
+3. **Restart Instructions:**
+   Restack provides a command to resume from where it stopped:
+   ```bash
+   ❌ 작업이 중단되었습니다.
+   
+   💡 다시 시작하려면 다음 명령어를 실행하세요:
+      restack a1b2c3d f80ce55b feature/previous-pr
+   ```
+
+   The suggested command:
+   - **Start commit:** The commit that failed (where the conflict occurred)
+   - **End commit:** The original end commit
+   - **Base branch:** The last successfully restacked branch
+
+#### Example Abort and Restart
+
+```bash
+# First attempt hits conflict
+restack 938fa82 f80ce55 origin/main
+# ... conflict occurs at commit d4e5f6g
+선택 (1/2/3): 3
+
+❌ 작업이 중단되었습니다.
+💡 다시 시작하려면 다음 명령어를 실행하세요:
+   restack d4e5f6g f80ce55 feature/add-user-auth
+
+# After fixing the issue in the commits
+restack d4e5f6g f80ce55 feature/add-user-auth
+```
+
+## Invalid Choice Handling
+
+If you enter an invalid option, restack prompts you again:
+
+```bash
+선택 (1/2/3): 4
+❌ 잘못된 선택입니다. 다시 선택하세요.
+
+⚠️  충돌이 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 충돌 해결 후 계속 (git cherry-pick --continue)
+   2) 이 커밋 스킵 (git cherry-pick --skip)
+   3) 전체 작업 중단 (git cherry-pick --abort)
+선택 (1/2/3):
+```
+
+## Best Practices
+
+### Before Restacking
+
+1. **Ensure clean working directory:**
+   ```bash
+   git status
+   # Should show "nothing to commit, working tree clean"
+   ```
+
+2. **Fetch latest changes:**
+   ```bash
+   git fetch origin
+   ```
+
+3. **Review commit history:**
+   ```bash
+   git log --oneline 938fa82..f80ce55
+   ```
+
+### During Conflict Resolution
+
+1. **Check which files have conflicts:**
+   ```bash
+   git status
+   git diff
+   ```
+
+2. **Use a merge tool if available:**
+   ```bash
+   git mergetool
+   ```
+
+3. **Test your resolution:**
+   ```bash
+   npm test  # or your test command
+   ```
+
+4. **Stage all resolved files before pressing Enter:**
+   ```bash
+   git add .
+   git status  # Verify all conflicts are resolved
+   ```
+
+### After Restacking
+
+1. **Verify the branch state:**
+   ```bash
+   git log --oneline -10
+   git diff origin/main
+   ```
+
+2. **Run tests:**
+   ```bash
+   npm test
+   ```
+
+3. **Check type errors** (handled automatically by restack):
+   ```bash
+   npx tsc --noEmit
+   ```
+
+## Common Conflict Scenarios
+
+### Overlapping Changes
+
+**Scenario:** Both branches modified the same lines in a file.
+
+**Resolution:** Manually merge the changes, keeping the necessary parts from both versions.
+
+### File Deletions
+
+**Scenario:** The commit deletes a file that was modified in the base branch.
+
+**Resolution:** Decide whether to keep the modified version or proceed with deletion.
+
+### Import Statement Conflicts
+
+**Scenario:** Different branches added different imports to the same file.
+
+**Resolution:** Merge the import statements, removing duplicates and organizing alphabetically.
+
+## Troubleshooting
+
+### Cherry-pick --continue Fails
+
+**Symptom:**
+```bash
+❌ cherry-pick --continue 실패. 다시 시도하세요.
+```
+
+**Solution:**
+1. Check that all conflicts are resolved: `git status`
+2. Ensure all files are staged: `git add .`
+3. Verify no syntax errors in resolved files
+4. Try the resolution menu again
+
+### Lost Conflict Context
+
+**Symptom:** You're unsure which commit caused the conflict.
+
+**Solution:**
+1. Check the last output before the conflict menu
+2. Run `git log CHERRY_PICK_HEAD` to see the commit being applied
+3. Run `git status` to see the conflicted files
+
+### Accidental Abort
+
+**Symptom:** You aborted but want to continue.
+
+**Solution:**
+Use the suggested restart command provided by restack:
+```bash
+restack <failed-commit> <end-commit> <last-success-branch>
+```
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Command Reference" icon="terminal" href="/usage/command-reference">
+    Full command syntax and parameters
+  </Card>
+  <Card title="Type Checking" icon="check-circle" href="/usage/type-checking">
+    How type checking works after conflicts
+  </Card>
+</CardGroup>

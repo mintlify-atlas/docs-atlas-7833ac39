@@ -1,0 +1,373 @@
+---
+title: "Branch Chains"
+description: "Understand how Restack creates sequential branches where each PR builds on the previous one"
+---
+
+Branch chains are sequences of Git branches where each branch builds on top of the previous one. This pattern is common when you're working on a large feature that requires multiple pull requests for review.
+
+## What is a Branch Chain?
+
+A branch chain is a linked series of branches with this structure:
+
+```
+origin/main
+  └─ feature/add-auth          (PR #1)
+      └─ feature/user-profile  (PR #2)
+          └─ feature/settings  (PR #3)
+```
+
+Each branch:
+- Contains changes from all previous branches
+- Adds its own specific changes on top
+- Creates a separate pull request
+- Can be reviewed and merged independently (in order)
+
+## Why Use Branch Chains?
+
+Branch chains are essential when:
+
+<CardGroup cols={2}>
+  <Card title="Large Features" icon="layer-group">
+    Breaking a big feature into smaller, reviewable PRs makes code review manageable and reduces the risk of bugs.
+  </Card>
+  
+  <Card title="Sequential Dependencies" icon="arrow-right">
+    When feature B depends on feature A, you need A merged first. Branch chains let you develop both while waiting for reviews.
+  </Card>
+  
+  <Card title="Incremental Delivery" icon="truck-fast">
+    Ship features to production incrementally as each PR is approved, rather than waiting for the entire feature.
+  </Card>
+  
+  <Card title="Parallel Development" icon="code-branch">
+    Work on later PRs while earlier ones are in review, maximizing development velocity.
+  </Card>
+</CardGroup>
+
+## How Restack Builds Branch Chains
+
+Restack reconstructs branch chains by creating each branch from the previous one. Here's the exact implementation (source:187-377):
+
+### The Sequential Building Process
+
+```bash
+PREVIOUS_BRANCH=""
+
+for pr_idx in "${!PR_BRANCHES[@]}"; do
+  FINAL_BRANCH_NAME="${PR_BRANCHES[$pr_idx]}"
+  TEMP_BRANCH_NAME="${TEMP_PREFIX}${FINAL_BRANCH_NAME}"
+  
+  # First PR: branch from base
+  if [ $pr_idx -eq 0 ]; then
+    git checkout -b "$TEMP_BRANCH_NAME" "$BASE_BRANCH"
+  
+  # Subsequent PRs: branch from previous PR
+  else
+    git checkout -b "$TEMP_BRANCH_NAME" "$PREVIOUS_BRANCH"
+  fi
+  
+  # ... cherry-pick commits, run type check ...
+  
+  # Update for next iteration
+  PREVIOUS_BRANCH="$FINAL_BRANCH_NAME"
+done
+```
+
+<Info>
+This logic is found in source lines 212-224. Each branch builds on the finalized previous branch, ensuring a proper chain.
+</Info>
+
+### Step-by-Step Example
+
+Let's walk through building a 3-branch chain:
+
+<Steps>
+  <Step title="Base Setup">
+    **Starting point**: `origin/feature/anytime`
+
+    **Detected PR ranges**:
+    1. `feature/add-auth` (commits A, B, C)
+    2. `feature/user-profile` (commits D, E)
+    3. `feature/settings` (commit F)
+  </Step>
+
+  <Step title="Build First Branch">
+    ```bash
+    # Create temporary branch from base
+    git checkout -b RESTACK-feature/add-auth origin/feature/anytime
+    
+    # Cherry-pick all commits for this PR
+    git cherry-pick A
+    git cherry-pick B
+    git cherry-pick C
+    
+    # Run type check
+    npx tsc --noEmit
+    
+    # Rename to final branch
+    git branch -m RESTACK-feature/add-auth feature/add-auth
+    ```
+
+    **Result**: `feature/add-auth` contains base + commits A, B, C
+  </Step>
+
+  <Step title="Build Second Branch">
+    ```bash
+    # Create temporary branch from PREVIOUS branch
+    git checkout -b RESTACK-feature/user-profile feature/add-auth
+    
+    # Cherry-pick all commits for this PR
+    git cherry-pick D
+    git cherry-pick E
+    
+    # Run type check
+    npx tsc --noEmit
+    
+    # Rename to final branch
+    git branch -m RESTACK-feature/user-profile feature/user-profile
+    ```
+
+    **Result**: `feature/user-profile` contains base + A, B, C + D, E
+  </Step>
+
+  <Step title="Build Third Branch">
+    ```bash
+    # Create temporary branch from PREVIOUS branch
+    git checkout -b RESTACK-feature/settings feature/user-profile
+    
+    # Cherry-pick all commits for this PR
+    git cherry-pick F
+    
+    # Run type check
+    npx tsc --noEmit
+    
+    # Rename to final branch
+    git branch -m RESTACK-feature/settings feature/settings
+    ```
+
+    **Result**: `feature/settings` contains base + A, B, C + D, E + F
+  </Step>
+</Steps>
+
+## Visualizing the Chain
+
+After PR range detection, Restack displays the planned chain structure (source:166-178):
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Re-stack Plan:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Base: origin/feature/anytime
+  └─ feature/add-auth
+      └─ feature/user-profile
+          └─ feature/settings
+```
+
+This tree visualization shows:
+- **Base branch**: The foundation all branches build from
+- **Sequential dependencies**: Each branch depends on the one above it
+- **Indentation**: Visual indicator of depth in the chain
+
+### The Indentation Algorithm
+
+Restack creates the tree with dynamic indentation (source:173-177):
+
+```bash
+for pr_idx in "${!PR_BRANCHES[@]}"; do
+  BRANCH_NAME="${PR_BRANCHES[$pr_idx]}"
+  
+  if [ $pr_idx -eq 0 ]; then
+    # First branch: 2 spaces + └─
+    echo "  └─ ${BRANCH_NAME}"
+  else
+    # Each subsequent branch: 4 spaces per level + previous indent + └─
+    echo "$( printf '%*s' $((pr_idx*4)) '' )└─ ${BRANCH_NAME}"
+  fi
+done
+```
+
+## Tracking the Chain State
+
+Restack maintains state using the `PREVIOUS_BRANCH` variable (source:191-193, 375):
+
+```bash
+# Initialize before loop
+PREVIOUS_BRANCH=""
+
+# After each PR is successfully created
+FINAL_BRANCHES+=("$FINAL_BRANCH_NAME")
+PREVIOUS_BRANCH="$FINAL_BRANCH_NAME"  # Set for next iteration
+```
+
+This ensures:
+- First branch uses the base branch
+- All subsequent branches use the previously finalized branch
+- Failed PRs don't affect the chain (operation aborts)
+
+## Why Use Temporary Branches?
+
+Restack creates temporary branches with the `RESTACK-` prefix (source:14, 198) during the building process. This design protects your existing branches:
+
+<Accordion title="Temporary Branch Workflow">
+**During restack operation:**
+
+```bash
+# Create temporary branch
+RESTACK-feature/add-auth  # Work in progress
+
+# Cherry-pick commits
+# Run type check
+# If everything passes...
+
+# Rename to final
+feature/add-auth          # Clean, finalized branch
+```
+
+**If something fails:**
+- Your original `feature/add-auth` branch remains unchanged
+- The `RESTACK-feature/add-auth` temporary branch is cleaned up
+- You can fix issues and retry
+
+**Source reference**: The rename logic is in source:99-110 and 362-372.
+</Accordion>
+
+## Chain Validation
+
+Each branch in the chain must pass validation before the next branch is built:
+
+### Type Checking Per Branch
+
+Restack runs TypeScript type checking after building each branch (source:304-360):
+
+```bash
+while ! run_typecheck "$TEMP_BRANCH_NAME"; do
+  # Type check failed - prompt user
+  echo "⚠️  Type errors detected. Fix and continue, or abort?"
+  
+  # If user fixes and continues, re-run type check
+  # If user aborts, clean up and exit
+done
+```
+
+<Warning>
+If a branch fails type checking, the entire chain building stops. This ensures every branch in your chain is independently valid and won't break dependent branches.
+</Warning>
+
+## Resuming Failed Chain Builds
+
+If restack fails during chain building, it provides a resume command (source:282-291, 342-351):
+
+```bash
+❌ Operation aborted.
+
+💡 To resume, run:
+   restack a1b2c3d f80ce55 feature/add-auth
+```
+
+This command:
+- **Starts from the failed commit** (a1b2c3d)
+- **Ends at the original end** (f80ce55)
+- **Uses the last successful branch as the new base** (feature/add-auth)
+
+This allows you to:
+1. Fix the issue that caused the failure
+2. Resume without rebuilding successful branches
+3. Continue building the rest of the chain
+
+## Working with Branch Chains
+
+<AccordionGroup>
+  <Accordion title="How do I add a new PR to an existing chain?">
+    1. Make sure the last branch in your chain is checked out
+    2. Create a new branch from it:
+       ```bash
+       git checkout feature/settings  # Last branch in chain
+       git checkout -b feature/new-feature
+       ```
+    3. Make your commits
+    4. Run restack with the new commit range:
+       ```bash
+       restack FIRST_COMMIT LAST_NEW_COMMIT BASE_BRANCH
+       ```
+  </Accordion>
+
+  <Accordion title="What happens when I merge a PR in the middle of the chain?">
+    When you merge an earlier PR:
+    - All subsequent PRs need to be rebased on the new base
+    - Run restack with the merged branch as the new base:
+      ```bash
+      restack NEXT_PR_START END_COMMIT origin/main
+      ```
+    - This rebuilds the chain with the merged changes incorporated
+  </Accordion>
+
+  <Accordion title="Can I reorder PRs in a chain?">
+    Yes, but carefully:
+    1. Adjust the branch pointers to reflect the new order
+    2. Run restack with the same commit range
+    3. Restack will rebuild the chain based on the new branch pointer positions
+    
+    **Warning**: Make sure the reordered PRs don't have dependencies that would break.
+  </Accordion>
+
+  <Accordion title="How do I remove a PR from the middle of a chain?">
+    1. Remove the branch pointer from that PR's last commit:
+       ```bash
+       git branch -D feature/unwanted-pr
+       ```
+    2. Run restack with the full commit range
+    3. Without the branch pointer, those commits will be merged into adjacent PRs
+    
+    **Note**: This doesn't delete the commits, just changes how they're grouped.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices for Branch Chains
+
+<CardGroup cols={2}>
+  <Card title="Keep PRs Focused" icon="bullseye">
+    Each PR in the chain should have a clear, single purpose. This makes review easier and reduces the risk of merge conflicts.
+  </Card>
+
+  <Card title="Test Each Branch" icon="flask">
+    Run tests on each branch individually, not just the final one. Restack's built-in type checking helps, but add your own test validation too.
+  </Card>
+
+  <Card title="Merge Sequentially" icon="arrow-down-1-9">
+    Always merge PRs in order, from base to tip. Merging out of order breaks the chain and requires rebuilding.
+  </Card>
+
+  <Card title="Document Dependencies" icon="book">
+    In PR descriptions, clearly note which PR this builds on. This helps reviewers understand the context.
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Pattern 1: Feature + Refactor + Tests
+
+```
+origin/main
+  └─ feature/add-auth         # Core feature implementation
+      └─ feature/auth-refactor # Clean up and optimize
+          └─ feature/auth-tests # Comprehensive test coverage
+```
+
+### Pattern 2: Backend + Frontend + Integration
+
+```
+origin/main
+  └─ feature/api-endpoints     # Backend API
+      └─ feature/ui-components # Frontend components
+          └─ feature/integration # Connect them together
+```
+
+### Pattern 3: Foundation + Features
+
+```
+origin/main
+  └─ feature/infrastructure  # Setup and configuration
+      └─ feature/user-auth   # First feature using infrastructure
+          └─ feature/admin   # Second feature
+              └─ feature/api # Third feature
+```

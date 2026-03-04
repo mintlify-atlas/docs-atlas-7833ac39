@@ -1,0 +1,119 @@
+---
+title: System Requirements
+description: System requirements and project structure needed to run Restack CLI
+---
+
+## System Requirements
+
+Restack CLI requires the following software to be installed on your system:
+
+### Node.js
+
+- **Version**: Node.js >= 14.0.0
+- Restack CLI is built with Bash but uses npm for distribution
+- Check your Node.js version:
+  ```bash
+  node --version
+  ```
+
+### Git
+
+- Git must be installed and available in your PATH
+- Used for all branch and commit operations
+- Check your Git version:
+  ```bash
+  git --version
+  ```
+
+### TypeScript (Optional)
+
+- Required if you want to use the type checking feature
+- TypeScript project with `tsc` available via npx
+- The CLI runs `npx tsc --noEmit` for type checking
+
+## Project Structure Requirements
+
+<Warning>
+Restack CLI has specific project structure requirements that must be met for type checking to work.
+</Warning>
+
+### Required Directory Structure
+
+The CLI expects your project to have the following structure:
+
+```
+project-root/
+└── uglyus-web/          # Required directory for type checking
+    ├── tsconfig.json    # TypeScript configuration
+    └── ... (your TypeScript files)
+```
+
+### uglyus-web Directory
+
+The `uglyus-web` directory is required at the project root:
+
+- **Location**: Must be directly under the Git repository root
+- **Purpose**: Used as the working directory for TypeScript type checking
+- **Type Checking**: The CLI runs `npx tsc --noEmit` inside this directory
+
+Relevant code (bin/restack:31-38):
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+WEB_DIR="${PROJECT_ROOT}/uglyus-web"
+
+if [ ! -d "$WEB_DIR" ]; then
+  echo -e "${RED}❌ uglyus-web 디렉토리를 찾을 수 없습니다.${NC}"
+  exit 1
+fi
+```
+
+<Note>
+If you don't have a `uglyus-web` directory, the CLI will exit with an error. This directory must exist even if you're not using TypeScript.
+</Note>
+
+## Branch Requirements
+
+### Local Branches for PR Endpoints
+
+Each Pull Request in your commit range must have a local branch pointing to its last commit:
+
+- **PR Identification**: The CLI identifies PR boundaries by finding commits with local branches
+- **Branch Points**: Each PR's final commit must have a local branch pointing to it
+- **No Branch = Error**: If no commits have branches, the CLI will exit with an error
+
+Relevant code (bin/restack:136-139):
+```bash
+if [ ${#PR_BRANCHES[@]} -eq 0 ]; then
+  echo -e "${RED}❌ 브랜치가 연결된 커밋을 찾을 수 없습니다.${NC}"
+  echo -e "${YELLOW}💡 각 PR의 마지막 커밋에 로컬 브랜치가 있어야 합니다.${NC}"
+  exit 1
+fi
+```
+
+### Remote Branch Access
+
+If using a remote branch as the base:
+
+- The CLI automatically fetches remote branches prefixed with `origin/`
+- Requires network access to the Git remote
+- Fetch failures will cause the CLI to exit
+
+Relevant code (bin/restack:44-46):
+```bash
+git fetch origin "${REMOTE_BRANCH}" || {
+  echo -e "${RED}❌ fetch 실패: origin/${REMOTE_BRANCH}${NC}"
+  exit 1
+}
+```
+
+## Installation Requirements
+
+To install Restack CLI globally:
+
+```bash
+git clone https://github.com/uglyus-daniel/restack-cli.git
+cd restack-cli
+npm link
+```
+
+This makes the `restack` command available system-wide.

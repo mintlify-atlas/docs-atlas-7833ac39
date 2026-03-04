@@ -1,0 +1,404 @@
+---
+title: Type Checking
+description: Understand how TypeScript type checking works at each PR stage and how to fix errors
+---
+
+## Overview
+
+Restack automatically runs TypeScript type checking after all commits in each PR are applied. This ensures that each stacked PR maintains type safety before moving to the next PR in the stack.
+
+## When Type Checking Runs
+
+Type checking occurs **after all commits in a PR** have been successfully cherry-picked:
+
+```bash
+[PR 1/2] feature/add-user-auth
+   임시 브랜치: RESTACK-feature/add-user-auth
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Cherry-picking 938fa82...
+      ✅ 성공
+   Cherry-picking a1b2c3d...
+      ✅ 성공
+
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ✅ 타입 검사 통과
+```
+
+## Type Check Process
+
+### 1. Directory Resolution
+
+Restack looks for the `uglyus-web` directory in your project root:
+
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+WEB_DIR="${PROJECT_ROOT}/uglyus-web"
+```
+
+<Warning>
+The type check will fail if the `uglyus-web` directory doesn't exist:
+```bash
+❌ uglyus-web 디렉토리를 찾을 수 없습니다.
+```
+</Warning>
+
+### 2. TypeScript Compilation
+
+Restack runs `npx tsc --noEmit` in the `uglyus-web` directory:
+
+```bash
+cd uglyus-web
+npx tsc --noEmit
+```
+
+The `--noEmit` flag ensures TypeScript only checks types without generating output files.
+
+### 3. Result Handling
+
+#### Success
+
+If type checking passes:
+
+```bash
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ✅ 타입 검사 통과
+   🔄 RESTACK-feature/add-user-auth → feature/add-user-auth
+```
+
+The temporary branch is immediately renamed to the final branch name, and restack continues to the next PR.
+
+#### Failure
+
+If type checking fails, restack enters an interactive resolution loop:
+
+```bash
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ❌ 타입 검사 실패!
+
+⚠️  타입 에러가 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 타입 에러 수정 후 계속
+   2) 전체 작업 중단
+선택 (1/2):
+```
+
+## Interactive Type Error Resolution
+
+### Option 1: Fix Errors and Continue
+
+Fix the type errors and re-run type checking.
+
+#### Workflow
+
+1. **Select Option 1:**
+   ```bash
+   선택 (1/2): 1
+   ```
+
+2. **Restack Pauses:**
+   ```bash
+   💡 타입 에러를 수정하세요. 완료되면 Enter를 누르세요.
+      현재 브랜치: RESTACK-feature/add-user-auth
+      디렉토리: /path/to/project/uglyus-web
+   타입 에러 수정 완료 후 Enter:
+   ```
+
+3. **Fix Type Errors:**
+   In another terminal, navigate to the project and fix the errors:
+   
+   ```bash
+   # Check type errors
+   cd uglyus-web
+   npx tsc --noEmit
+   
+   # Fix the errors in your editor
+   vim src/components/UserProfile.tsx
+   ```
+
+4. **Commit Changes (Optional):**
+   If you made changes, restack asks if you want to amend the last commit:
+   
+   ```bash
+      변경사항이 감지되었습니다. 마지막 커밋에 추가하시겠습니까? (y/n)
+   선택: y
+      ✅ 변경사항이 마지막 커밋에 추가되었습니다.
+   ```
+   
+   - **Option y:** Runs `git add -A && git commit --amend --no-edit`
+   - **Option n:** Leaves changes unstaged
+
+5. **Automatic Re-check:**
+   Restack automatically re-runs type checking:
+   ```bash
+   🔄 타입 검사 재실행 중...
+   🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+      ✅ 타입 검사 통과
+   ```
+
+<Note>
+The type checking loop continues until all errors are resolved or you choose to abort.
+</Note>
+
+#### Example Fix Process
+
+```bash
+# Terminal 1: Restack encounters type error
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ❌ 타입 검사 실패!
+선택 (1/2): 1
+💡 타입 에러를 수정하세요. 완료되면 Enter를 누르세요.
+
+# Terminal 2: Fix the errors
+$ cd uglyus-web
+$ npx tsc --noEmit
+src/auth/login.ts:42:15 - error TS2339: Property 'username' does not exist on type 'User'.
+
+$ vim src/auth/login.ts
+# Fix the error: change 'username' to 'email'
+
+$ npx tsc --noEmit
+# No errors!
+
+# Terminal 1: Press Enter
+타입 에러 수정 완료 후 Enter: [ENTER]
+   변경사항이 감지되었습니다. 마지막 커밋에 추가하시겠습니까? (y/n)
+선택: y
+   ✅ 변경사항이 마지막 커밋에 추가되었습니다.
+🔄 타입 검사 재실행 중...
+   ✅ 타입 검사 통과
+```
+
+### Option 2: Abort Operation
+
+Stop the entire restack process if type errors are too complex or require structural changes.
+
+#### Workflow
+
+1. **Select Option 2:**
+   ```bash
+   선택 (1/2): 2
+   ```
+
+2. **Cleanup and Exit:**
+   ```bash
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   ❌ 타입 검사 실패로 작업이 중단되었습니다.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   🧹 임시 브랜치 정리 중...
+   ```
+
+3. **Restart Instructions:**
+   ```bash
+   💡 다시 시작하려면 다음 명령어를 실행하세요:
+      restack a1b2c3d f80ce55 feature/previous-pr
+   💡 타입 오류를 수정한 커밋으로 시작해야 합니다.
+   ```
+
+<Warning>
+Before restarting, fix the type errors in the original commits. Otherwise, the same errors will occur again.
+</Warning>
+
+## Understanding Type Check Output
+
+### Successful Output
+
+```bash
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+   ✅ 타입 검사 통과
+```
+
+No type errors detected. The PR is safe to stack.
+
+### Failed Output
+
+```bash
+🔍 타입 검사 중... (RESTACK-feature/add-user-auth)
+src/components/Button.tsx:12:5 - error TS2322: Type 'string' is not assignable to type 'number'.
+
+12     count: "5"
+       ~~~~~
+
+src/utils/format.ts:8:10 - error TS2304: Cannot find name 'moment'.
+
+8   return moment(date).format('YYYY-MM-DD');
+           ~~~~~~
+
+Found 2 errors.
+
+   ❌ 타입 검사 실패!
+```
+
+TypeScript displays detailed error messages with file locations and line numbers.
+
+## Common Type Errors
+
+### Missing Type Definitions
+
+**Error:**
+```bash
+error TS2304: Cannot find name 'SomeType'.
+```
+
+**Fix:**
+- Import the missing type: `import { SomeType } from './types'`
+- Install missing type definitions: `npm install --save-dev @types/package-name`
+
+### Type Mismatches
+
+**Error:**
+```bash
+error TS2322: Type 'string' is not assignable to type 'number'.
+```
+
+**Fix:**
+- Change the value to match the expected type
+- Update the type definition if the change is intentional
+- Add type casting if necessary: `value as number`
+
+### Missing Properties
+
+**Error:**
+```bash
+error TS2339: Property 'username' does not exist on type 'User'.
+```
+
+**Fix:**
+- Use the correct property name: `user.email`
+- Add the property to the type definition
+- Use optional chaining if appropriate: `user.username?`
+
+### Import Errors
+
+**Error:**
+```bash
+error TS2307: Cannot find module './component' or its corresponding type declarations.
+```
+
+**Fix:**
+- Check the import path
+- Ensure the file exists
+- Add file extension if needed: `'./component.tsx'`
+
+## Best Practices
+
+### Before Restacking
+
+1. **Run type check locally on all commits:**
+   ```bash
+   git checkout feature/add-user-auth
+   cd uglyus-web
+   npx tsc --noEmit
+   ```
+
+2. **Fix all type errors before restacking:**
+   This prevents interruptions during the restack process.
+
+3. **Ensure dependencies are installed:**
+   ```bash
+   cd uglyus-web
+   npm install
+   ```
+
+### During Type Error Resolution
+
+1. **Read error messages carefully:**
+   TypeScript provides detailed information about the issue.
+
+2. **Fix errors incrementally:**
+   Address one error at a time to avoid confusion.
+
+3. **Test your fixes:**
+   Run `npx tsc --noEmit` before pressing Enter.
+
+4. **Commit fixes to the appropriate commit:**
+   Use the amend option to keep the fix with the commit that introduced the error.
+
+### After Type Checking Passes
+
+1. **Verify the build:**
+   ```bash
+   npm run build
+   ```
+
+2. **Run tests:**
+   ```bash
+   npm test
+   ```
+
+3. **Check the final branch:**
+   ```bash
+   git log --oneline -5
+   ```
+
+## Source Code Reference
+
+The type checking function is defined in the restack script at lines 80-96:
+
+```bash
+# bin/restack:80-96
+run_typecheck() {
+  local branch_name="$1"
+  echo -e "\n${BLUE}🔍 타입 검사 중... (${branch_name})${NC}"
+  
+  cd "$WEB_DIR"
+  
+  if npx tsc --noEmit 2>&1; then
+    echo -e "${GREEN}   ✅ 타입 검사 통과${NC}"
+    cd "$PROJECT_ROOT"
+    return 0
+  else
+    echo -e "${RED}   ❌ 타입 검사 실패!${NC}"
+    cd "$PROJECT_ROOT"
+    return 1
+  fi
+}
+```
+
+The interactive resolution loop is at lines 303-360.
+
+## Troubleshooting
+
+### Type Check Never Completes
+
+**Symptom:** Type check hangs indefinitely.
+
+**Solution:**
+1. Press Ctrl+C to cancel
+2. Check if `node_modules` exists in `uglyus-web`
+3. Run `npm install` if needed
+4. Restart restack
+
+### Type Check Passes Locally but Fails in Restack
+
+**Symptom:** Types work on your branch but fail during restack.
+
+**Solution:**
+1. The base branch may have different type definitions
+2. Check if dependencies changed between branches
+3. Update your commits to work with the base branch types
+
+### Amend Option Doesn't Appear
+
+**Symptom:** No prompt to amend after fixing errors.
+
+**Solution:**
+The amend prompt only appears if you made changes (modified/added files). If you didn't make changes, the prompt won't show.
+
+### Wrong Directory for Type Check
+
+**Symptom:** Can't find `uglyus-web` directory.
+
+**Solution:**
+1. Ensure you're running restack from the project root
+2. Check that `uglyus-web` exists: `ls -la uglyus-web`
+3. Modify the script if your TypeScript code is in a different directory
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Command Reference" icon="terminal" href="/usage/command-reference">
+    Full command syntax and parameters
+  </Card>
+  <Card title="Conflict Resolution" icon="code-merge" href="/usage/conflict-resolution">
+    How to handle merge conflicts
+  </Card>
+</CardGroup>

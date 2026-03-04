@@ -1,0 +1,330 @@
+---
+title: Frequently Asked Questions
+description: Common questions about Restack CLI
+---
+
+## General Questions
+
+<Accordion title="What is Restack CLI?">
+Restack CLI is a Git tool that reorganizes commits by Pull Request (PR) units. It analyzes a range of commits, groups them by PR based on branch connections, and creates a new branch chain by cherry-picking commits in order.
+
+The CLI is designed for workflows where multiple PRs are stacked on top of each other, and you need to reorder or reorganize them.
+</Accordion>
+
+<Accordion title="What does 'restack' mean?">
+Restacking refers to the process of reorganizing a stack of related Pull Requests. When you have multiple PRs built on top of each other and need to change their order or rebuild them cleanly, you "restack" them by:
+
+1. Identifying PR boundaries based on branch connections
+2. Cherry-picking commits in the correct order
+3. Creating a clean, linear branch chain
+</Accordion>
+
+<Accordion title="Why use Restack CLI instead of manual cherry-picking?">
+Restack CLI automates several tedious tasks:
+
+- **Automatic PR detection**: Finds PR boundaries based on branch-connected commits
+- **Sequential cherry-picking**: Handles the entire commit range automatically
+- **Type checking**: Validates TypeScript code after each PR
+- **Conflict handling**: Provides interactive prompts for conflicts
+- **Branch management**: Creates and renames branches automatically
+- **Visual feedback**: Color-coded output shows progress clearly
+
+Manual cherry-picking would require doing all of this yourself.
+</Accordion>
+
+---
+
+## Requirements and Setup
+
+<Accordion title="Do I need TypeScript to use Restack CLI?">
+No, but the CLI is designed with TypeScript projects in mind. The type checking feature runs `npx tsc --noEmit` in the `uglyus-web` directory after each PR.
+
+If you're not using TypeScript:
+- You still need the `uglyus-web` directory to exist
+- Type checking will run but may not do anything useful
+- You can skip type check failures when prompted
+</Accordion>
+
+<Accordion title="Why does the CLI require a 'uglyus-web' directory?">
+The CLI was originally built for a specific project structure. The `uglyus-web` directory is hardcoded as the location for TypeScript type checking.
+
+From bin/restack:31-38:
+```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel)
+WEB_DIR="${PROJECT_ROOT}/uglyus-web"
+
+if [ ! -d "$WEB_DIR" ]; then
+  echo -e "❌ uglyus-web 디렉토리를 찾을 수 없습니다."
+  exit 1
+fi
+```
+
+If your project has a different structure, you'll need to:
+- Create a symlink: `ln -s your-directory uglyus-web`
+- Or modify the script to use your directory name
+</Accordion>
+
+<Accordion title="Can I use Restack CLI with any base branch?">
+Yes! While the default base branch is `origin/feature/anytime`, you can specify any branch:
+
+```bash
+# Use main as base
+restack abc123 def456 origin/main
+
+# Use local branch as base
+restack abc123 def456 my-local-branch
+
+# Use default (origin/feature/anytime)
+restack abc123 def456
+```
+
+The CLI automatically fetches remote branches (those starting with `origin/`).
+</Accordion>
+
+---
+
+## Usage and Workflow
+
+<Accordion title="How do I identify PR boundaries?">
+The CLI identifies PR boundaries by finding commits with local branches pointing to them. Each PR must have a local branch on its **last commit**.
+
+From bin/restack:73-78:
+```bash
+find_branch_for_commit() {
+  local commit="$1"
+  local branch=$(git branch --list --format='%(refname:short)' --points-at "$commit" 2>/dev/null | head -n1)
+  echo "$branch"
+}
+```
+
+Example:
+```
+Commit A (no branch)
+Commit B (no branch)  
+Commit C (branch: pr-1) ← End of PR 1
+Commit D (no branch)
+Commit E (branch: pr-2) ← End of PR 2
+```
+
+This creates two PRs:
+- PR 1: Commits A → B → C
+- PR 2: Commits D → E
+</Accordion>
+
+<Accordion title="What happens during a restack operation?">
+The CLI performs these steps:
+
+1. **Analyze commits**: Gets all commits in the specified range
+2. **Find PR boundaries**: Identifies commits with branches
+3. **Show plan**: Displays PRs and asks for confirmation
+4. **Create temporary branches**: Uses `RESTACK-` prefix
+5. **Cherry-pick commits**: Applies each commit sequentially
+6. **Handle conflicts**: Prompts for resolution if needed
+7. **Run type checks**: Validates TypeScript after each PR
+8. **Rename branches**: Converts temporary branches to final names
+9. **Offer to push**: Asks if you want to push all branches
+
+Each step provides colored output showing progress.
+</Accordion>
+
+<Accordion title="What are temporary branches and why are they used?">
+The CLI creates temporary branches with the `RESTACK-` prefix during the operation:
+
+```bash
+RESTACK-feature-1  # Temporary
+RESTACK-feature-2  # Temporary
+```
+
+Benefits:
+- **Safety**: Preserves original branches until success
+- **Rollback**: Easy to abort and clean up
+- **Clarity**: Clear distinction between work-in-progress and final
+
+After type checking passes, temporary branches are renamed to their final names:
+```bash
+RESTACK-feature-1 → feature-1
+RESTACK-feature-2 → feature-2
+```
+
+From bin/restack:98-110:
+```bash
+rename_temp_to_final() {
+  local temp_branch="$1"
+  local final_branch="$2"
+  
+  # Delete existing branch if present
+  if git rev-parse --verify "$final_branch" >/dev/null 2>&1; then
+    git branch -D "$final_branch" >/dev/null 2>&1 || true
+  fi
+  
+  # Rename temporary to final
+  git branch -m "$temp_branch" "$final_branch"
+}
+```
+</Accordion>
+
+<Accordion title="Can I skip commits during cherry-picking?">
+Yes! When a cherry-pick conflict occurs, you have three options:
+
+1. **Resolve and continue**: Fix conflicts manually and proceed
+2. **Skip the commit**: Exclude this commit from the restacked branch
+3. **Abort entirely**: Stop the operation and clean up
+
+Skipping commits is useful when:
+- A commit is no longer needed
+- The commit conflicts cannot be easily resolved
+- You want to exclude specific changes
+
+<Warning>
+Skipping commits may cause issues if later commits depend on the skipped commit's changes.
+</Warning>
+</Accordion>
+
+---
+
+## Error Handling
+
+<Accordion title="What happens if type checking fails?">
+When type checking fails, you'll see an interactive prompt:
+
+```
+⚠️  타입 에러가 발생했습니다. 어떻게 진행하시겠습니까?
+   1) 타입 에러 수정 후 계속
+   2) 전체 작업 중단
+```
+
+If you choose to fix errors:
+1. Fix the type errors in your editor
+2. The CLI asks if you want to amend the last commit
+3. Type checking runs again
+4. Repeat until it passes
+
+If you choose to abort:
+- Temporary branches are cleaned up
+- You're returned to the original branch
+- The CLI provides a restart command
+</Accordion>
+
+<Accordion title="How do I recover from a failed restack?">
+If a restack operation fails (due to conflicts, type errors, or user abort), the CLI provides a restart command:
+
+```bash
+restack <failed-commit> <end-commit> <last-success-branch>
+```
+
+This allows you to:
+1. Fix issues in the original commits
+2. Resume from where you left off
+3. Use the last successful branch as the new base
+
+Example:
+```bash
+# Original command
+restack abc123 xyz789 origin/main
+
+# Failed at commit def456
+# CLI suggests:
+restack def456 xyz789 feature-1
+```
+</Accordion>
+
+<Accordion title="Can I manually clean up if something goes wrong?">
+Yes! If you need to manually clean up:
+
+```bash
+# Remove all temporary branches
+git branch | grep RESTACK- | xargs git branch -D
+
+# Return to original branch
+git checkout <your-original-branch>
+
+# Abort any in-progress cherry-pick
+git cherry-pick --abort
+```
+
+The CLI's temporary branch prefix (`RESTACK-`) makes it easy to identify and remove work-in-progress branches.
+</Accordion>
+
+---
+
+## Advanced Usage
+
+<Accordion title="Can I run Restack CLI without interactive prompts?">
+No, the CLI is designed to be interactive. It prompts for confirmation at several points:
+
+1. **Before starting**: Confirms the restack plan
+2. **During conflicts**: Asks how to handle conflicts
+3. **During type errors**: Asks whether to fix or abort
+4. **After completion**: Asks whether to push branches
+
+These prompts ensure you maintain control over the process and can make decisions based on the specific situation.
+</Accordion>
+
+<Accordion title="Does the CLI push branches automatically?">
+No, the CLI asks for confirmation before pushing:
+
+```
+💡 생성된 모든 브랜치를 원격에 푸시하시겠습니까? (y/n)
+```
+
+If you choose yes:
+- All restacked branches are pushed with `--force-with-lease`
+- Each branch is pushed individually
+- Push failures are reported but don't stop other pushes
+
+You can also push manually later:
+```bash
+git push origin feature-1 --force-with-lease
+git push origin feature-2 --force-with-lease
+```
+</Accordion>
+
+<Accordion title="Can I use short commit hashes?">
+Yes! The CLI accepts both short and full commit hashes:
+
+```bash
+# Short hashes (7+ characters)
+restack 938fa82 f80ce55
+
+# Full hashes
+restack 938fa82e1234567890abcdef f80ce55b1234567890abcdef
+
+# Mixed
+restack 938fa82 f80ce55b1234567890abcdef
+```
+
+Git will resolve short hashes as long as they're unambiguous.
+</Accordion>
+
+<Accordion title="What's the best way to prepare commits for restacking?">
+To ensure smooth restacking:
+
+1. **Create clear PR boundaries**:
+   ```bash
+   # Create a branch at the end of each PR
+   git branch pr-1-feature <last-commit-of-pr-1>
+   git branch pr-2-bugfix <last-commit-of-pr-2>
+   ```
+
+2. **Verify branch connections**:
+   ```bash
+   # Check which branches point to a commit
+   git branch --list --points-at <commit-hash>
+   ```
+
+3. **Test type checking**:
+   ```bash
+   cd uglyus-web
+   npx tsc --noEmit
+   ```
+
+4. **Review commit range**:
+   ```bash
+   git log --oneline <start-commit>^..<end-commit>
+   ```
+
+5. **Ensure clean working directory**:
+   ```bash
+   git status  # Should show no uncommitted changes
+   ```
+</Accordion>

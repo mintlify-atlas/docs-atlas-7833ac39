@@ -1,0 +1,249 @@
+---
+title: "PR Ranges"
+description: "Learn how Restack detects pull request boundaries using branch-connected commits"
+---
+
+PR ranges are the fundamental concept that allows Restack to understand where one pull request ends and another begins. Without proper PR range detection, Restack cannot rebuild your branch chain correctly.
+
+## What is a PR Range?
+
+A PR range is a continuous sequence of commits that belong to a single pull request. It has:
+- A **start commit**: The first commit in the PR
+- An **end commit**: The last commit in the PR (must have a branch pointer)
+- **All commits in between**: The complete set of changes for that PR
+
+## How PR Boundaries are Detected
+
+Restack uses a simple but powerful heuristic: **commits with branch pointers mark the end of a PR range**.
+
+### Detection Algorithm
+
+Here's the exact logic from the source code (source:112-140):
+
+```bash
+# Step 1: Store all commits in the range
+while IFS= read -r commit; do
+  ALL_COMMITS+=("$commit")
+done <<< "$COMMITS"
+
+# Step 2: Find commits with branch pointers
+for i in "${!ALL_COMMITS[@]}"; do
+  commit="${ALL_COMMITS[$i]}"
+  
+  # Check if any branch points to this commit
+  BRANCH_NAME=$(git branch --list --format='%(refname:short)' \
+    --points-at "$commit" | head -n1)
+  
+  if [ -n "$BRANCH_NAME" ]; then
+    # Found a PR boundary!
+    PR_BRANCHES+=("$BRANCH_NAME")
+    PR_END_INDICES+=("$i")  # Store the index
+  fi
+done
+```
+
+### The `find_branch_for_commit` Function
+
+Restack uses this helper function to check if a commit has a branch pointer (source:73-78):
+
+```bash
+find_branch_for_commit() {
+  local commit="$1"
+  local branch=$(git branch --list --format='%(refname:short)' \
+    --points-at "$commit" 2>/dev/null | head -n1)
+  echo "$branch"
+}
+```
+
+<Info>
+The `--points-at` flag is key. It returns branches that point **exactly** to the specified commit, not branches that merely contain the commit in their history.
+</Info>
+
+## What Makes a Valid PR Range?
+
+For Restack to successfully detect your PR ranges, you must follow these rules:
+
+### Rule 1: Each PR Must Have a Branch Pointer
+
+The **last commit** of each PR must have a local branch pointing to it.
+
+<CodeGroup>
+```bash Valid Example
+# Your commit history
+* f80ce55 (feature/user-profile) Add profile settings
+* e4f5g6h Update profile UI
+* a1b2c3d (feature/add-auth) Add auth provider
+* 938fa82 Setup auth configuration
+
+# Two PR ranges will be detected:
+# PR 1: 938fa82 ~ a1b2c3d (feature/add-auth)
+# PR 2: e4f5g6h ~ f80ce55 (feature/user-profile)
+```
+
+```bash Invalid Example
+# Your commit history (MISSING BRANCH on PR 1's last commit)
+* f80ce55 (feature/user-profile) Add profile settings
+* e4f5g6h Update profile UI
+* a1b2c3d Add auth provider  # ❌ No branch pointer!
+* 938fa82 Setup auth configuration
+
+# Only ONE PR range detected:
+# PR 1: 938fa82 ~ f80ce55 (feature/user-profile)
+# Commits 938fa82 ~ a1b2c3d are merged into PR 1!
+```
+</CodeGroup>
+
+<Warning>
+If Restack finds no branch pointers, it exits with this error (source:136-140):
+
+```
+❌ No commits with connected branches found.
+💡 Each PR's final commit must have a local branch.
+```
+</Warning>
+
+### Rule 2: Branches Must Be Local
+
+The `git branch --list` command only searches **local branches**, not remote branches (source:76).
+
+```bash
+# ✅ This works
+git branch feature/add-auth a1b2c3d
+
+# ❌ This does NOT work for detection
+# (remote branch only)
+git fetch origin feature/add-auth
+```
+
+<Note>
+Before running Restack, ensure you have local branches for each PR:
+
+```bash
+# Create local branches from remote
+git checkout -b feature/add-auth origin/feature/add-auth
+git checkout -b feature/user-profile origin/feature/user-profile
+```
+</Note>
+
+### Rule 3: One Branch Per Commit
+
+If multiple branches point to the same commit, Restack uses the first one found (source:76):
+
+```bash
+head -n1  # Takes only the first branch
+```
+
+## PR Range Output
+
+After detection, Restack displays the discovered ranges (source:142-163):
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Discovered PR Ranges:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  feature/add-auth ← 938fa82 ~ a1b2c3d (3 commits)
+  feature/user-profile ← e4f5g6h ~ f80ce55 (2 commits)
+  feature/settings ← 1234abc (1 commit)
+```
+
+This shows:
+- **Branch name**: The branch that will be created
+- **Commit range**: Start commit (short hash) to end commit (short hash)
+- **Commit count**: Total commits in this PR range
+
+## Calculating PR Range Boundaries
+
+Restack calculates the start of each PR range based on the end of the previous range (source:147-162):
+
+```bash
+PR_START_INDEX=0
+
+for pr_idx in "${!PR_BRANCHES[@]}"; do
+  PR_END_INDEX="${PR_END_INDICES[$pr_idx]}"
+  BRANCH_NAME="${PR_BRANCHES[$pr_idx]}"
+  
+  # Commits from PR_START_INDEX to PR_END_INDEX
+  COMMIT_COUNT_IN_PR=$((PR_END_INDEX - PR_START_INDEX + 1))
+  
+  # Next PR starts where this one ends
+  PR_START_INDEX=$((PR_END_INDEX + 1))
+done
+```
+
+### Example Calculation
+
+Given this commit array:
+```
+Index | Commit  | Branch
+------|---------|------------------
+0     | 938fa82 |
+1     | a1b2c3d | feature/add-auth     ← PR 1 ends here
+2     | e4f5g6h |
+3     | f80ce55 | feature/user-profile ← PR 2 ends here
+```
+
+PR ranges:
+- **PR 1**: Index 0 to 1 (commits 938fa82, a1b2c3d)
+- **PR 2**: Index 2 to 3 (commits e4f5g6h, f80ce55)
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Error: No commits with connected branches found">
+    **Cause**: None of the commits in your range have local branch pointers.
+
+    **Solution**:
+    1. Check which commits are in your range:
+       ```bash
+       git log --oneline START_COMMIT^..END_COMMIT
+       ```
+    
+    2. Create local branches for the last commit of each PR:
+       ```bash
+       git branch feature/pr-name COMMIT_HASH
+       ```
+  </Accordion>
+
+  <Accordion title="Too few PR ranges detected">
+    **Cause**: Some PRs are missing branch pointers on their final commits.
+
+    **Solution**: Ensure **every** PR's last commit has a branch:
+    ```bash
+    # Check branches at specific commits
+    git branch --points-at COMMIT_HASH
+    
+    # Create missing branches
+    git branch feature/missing-pr COMMIT_HASH
+    ```
+  </Accordion>
+
+  <Accordion title="Wrong commits grouped into a PR">
+    **Cause**: Branch pointer is on the wrong commit.
+
+    **Solution**: Move the branch to the correct commit:
+    ```bash
+    # Force move branch to correct commit
+    git branch -f feature/pr-name CORRECT_COMMIT_HASH
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Descriptive Branch Names" icon="tag">
+    Branch names should clearly indicate the PR they represent, as these names will be used in the restack output and become your new branch names.
+  </Card>
+  
+  <Card title="Verify Before Running" icon="check">
+    Before running `restack`, use `git log --oneline --decorate` to verify that branch pointers are on the correct commits.
+  </Card>
+  
+  <Card title="One PR, One Branch" icon="code-branch">
+    Avoid having multiple branches point to the same commit. Restack will only use the first one found.
+  </Card>
+  
+  <Card title="Keep Branches Local" icon="laptop">
+    Always work with local branches. Remote-only branches will not be detected by Restack.
+  </Card>
+</CardGroup>

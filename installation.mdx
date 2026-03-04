@@ -1,0 +1,172 @@
+---
+title: Installation
+description: Step-by-step guide to installing Restack CLI on your system
+---
+
+Get Restack CLI up and running on your machine in just a few minutes.
+
+## Prerequisites
+
+Before installing Restack CLI, verify you have the required dependencies:
+
+<AccordionGroup>
+  <Accordion title="Node.js >= 14.0.0">
+    Restack CLI requires Node.js version 14.0.0 or higher.
+    
+    Check your Node.js version:
+    ```bash
+    node --version
+    ```
+    
+    If you need to install or update Node.js, visit [nodejs.org](https://nodejs.org/).
+  </Accordion>
+  
+  <Accordion title="Git">
+    Git must be installed and configured on your system.
+    
+    Verify Git is installed:
+    ```bash
+    git --version
+    ```
+    
+    If Git is not installed, download it from [git-scm.com](https://git-scm.com/).
+  </Accordion>
+  
+  <Accordion title="TypeScript project (optional)">
+    If you plan to use the type checking feature, you need:
+    - A TypeScript project with `tsc` available
+    - A `uglyus-web` directory in your project root
+    
+    This is optional - Restack will work without it, but type checking will be skipped.
+  </Accordion>
+</AccordionGroup>
+
+## Installation steps
+
+Follow these steps to install Restack CLI globally on your system:
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Restack CLI repository from GitHub:
+    
+    ```bash
+    git clone https://github.com/uglyus-daniel/restack-cli.git
+    ```
+    
+    This creates a `restack-cli` directory with all the source code.
+  </Step>
+  
+  <Step title="Navigate to the directory">
+    Change into the cloned repository:
+    
+    ```bash
+    cd restack-cli
+    ```
+  </Step>
+  
+  <Step title="Link the package globally">
+    Use npm to link the package globally, making the `restack` command available system-wide:
+    
+    ```bash
+    npm link
+    ```
+    
+    This creates a symlink from the global `node_modules` to your local repository.
+  </Step>
+  
+  <Step title="Verify installation">
+    Test that the installation was successful by running:
+    
+    ```bash
+    restack
+    ```
+    
+    You should see usage information showing the command syntax.
+  </Step>
+</Steps>
+
+## What `npm link` does
+
+The `npm link` command performs two important actions:
+
+1. Creates a symlink in the global `node_modules` folder pointing to your local `restack-cli` directory
+2. Makes the `restack` command (defined in `package.json` under `bin`) available in your system PATH
+
+This means:
+- You can run `restack` from any directory on your system
+- Changes to the source code in your local repository are immediately reflected
+- No need to reinstall after making modifications
+
+<Note>
+  If you want to unlink the package later, run `npm unlink -g restack` from the repository directory.
+</Note>
+
+## Installation troubleshooting
+
+If you encounter issues during installation:
+
+<AccordionGroup>
+  <Accordion title="Permission denied during npm link">
+    If you get a permission error, you may need to run the command with elevated privileges:
+    
+    ```bash
+    sudo npm link
+    ```
+    
+    Alternatively, configure npm to use a different directory that doesn't require sudo. See [npm documentation](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally).
+  </Accordion>
+  
+  <Accordion title="Command not found after installation">
+    If `restack` is not found after linking:
+    
+    1. Verify the link was created: `npm list -g restack`
+    2. Check that your npm global bin directory is in your PATH:
+       ```bash
+       npm config get prefix
+       echo $PATH
+       ```
+    3. You may need to restart your terminal or source your shell configuration
+  </Accordion>
+  
+  <Accordion title="Git clone fails">
+    If cloning the repository fails:
+    
+    1. Verify you have internet connectivity
+    2. Check if you need to configure Git credentials
+    3. Try using HTTPS instead of SSH (or vice versa)
+  </Accordion>
+</AccordionGroup>
+
+## Updating Restack CLI
+
+To update to the latest version:
+
+<Steps>
+  <Step title="Navigate to the repository">
+    ```bash
+    cd restack-cli
+    ```
+  </Step>
+  
+  <Step title="Pull the latest changes">
+    ```bash
+    git pull origin main
+    ```
+  </Step>
+  
+  <Step title="Reinstall dependencies (if needed)">
+    ```bash
+    npm install
+    ```
+  </Step>
+</Steps>
+
+Since you used `npm link`, the updated code is immediately available - no need to relink.
+
+## Next steps
+
+Now that Restack CLI is installed, you're ready to reorganize your commits:
+
+<Card title="Quick start guide" icon="rocket" href="/quickstart">
+  Learn how to run your first restack command
+</Card>
