@@ -1,0 +1,57 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Restack CLI",
+  "projectDescription": "A Git CLI tool that reorganizes commits by PR units and creates new branch chains with automatic type checking.",
+  "theme": "aspen",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#2563EB",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/pr-ranges",
+          "concepts/branch-chains"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/command-reference",
+          "usage/conflict-resolution",
+          "usage/type-checking",
+          "usage/examples"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/requirements",
+          "reference/troubleshooting",
+          "reference/faq"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automatic PR range analysis based on branch-connected commits",
+    "Cherry-pick based commit reorganization",
+    "TypeScript type checking at each PR stage",
+    "Interactive conflict resolution",
+    "Automatic branch chain creation",
+    "Force-push with lease safety"
+  ],
+  "publicApiSurface": [
+    "restack <start-commit> <end-commit> [base-branch]"
+  ]
+}
