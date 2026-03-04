@@ -9,7 +9,7 @@ Branch chains are sequences of Git branches where each branch builds on top of t
 
 A branch chain is a linked series of branches with this structure:
 
-```
+```text
 origin/main
   └─ feature/add-auth          (PR #1)
       └─ feature/user-profile  (PR #2)
@@ -153,7 +153,7 @@ Let's walk through building a 3-branch chain:
 
 After PR range detection, Restack displays the planned chain structure (source:166-178):
 
-```
+```text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📚 Re-stack Plan:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -211,7 +211,7 @@ Restack creates temporary branches with the `RESTACK-` prefix (source:14, 198) d
 <Accordion title="Temporary Branch Workflow">
 **During restack operation:**
 
-```bash
+```text
 # Create temporary branch
 RESTACK-feature/add-auth  # Work in progress
 
@@ -257,7 +257,7 @@ If a branch fails type checking, the entire chain building stops. This ensures e
 
 If restack fails during chain building, it provides a resume command (source:282-291, 342-351):
 
-```bash
+```text
 ❌ Operation aborted.
 
 💡 To resume, run:
@@ -346,7 +346,7 @@ This allows you to:
 
 ### Pattern 1: Feature + Refactor + Tests
 
-```
+```text
 origin/main
   └─ feature/add-auth         # Core feature implementation
       └─ feature/auth-refactor # Clean up and optimize
@@ -355,7 +355,7 @@ origin/main
 
 ### Pattern 2: Backend + Frontend + Integration
 
-```
+```text
 origin/main
   └─ feature/api-endpoints     # Backend API
       └─ feature/ui-components # Frontend components
@@ -364,7 +364,7 @@ origin/main
 
 ### Pattern 3: Foundation + Features
 
-```
+```text
 origin/main
   └─ feature/infrastructure  # Setup and configuration
       └─ feature/user-auth   # First feature using infrastructure

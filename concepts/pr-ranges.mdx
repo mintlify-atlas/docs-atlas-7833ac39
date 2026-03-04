@@ -96,7 +96,7 @@ The **last commit** of each PR must have a local branch pointing to it.
 <Warning>
 If Restack finds no branch pointers, it exits with this error (source:136-140):
 
-```
+```text
 ❌ No commits with connected branches found.
 💡 Each PR's final commit must have a local branch.
 ```
@@ -137,7 +137,7 @@ head -n1  # Takes only the first branch
 
 After detection, Restack displays the discovered ranges (source:142-163):
 
-```
+```text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📚 Discovered PR Ranges:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -173,7 +173,7 @@ done
 ### Example Calculation
 
 Given this commit array:
-```
+```text
 Index | Commit  | Branch
 ------|---------|------------------
 0     | 938fa82 |
